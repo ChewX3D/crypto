@@ -33,7 +33,8 @@ because it IS the composition root. This exception must be stated in CLAUDE.md:
 ### GAP-002 — `cmd/order/errors.go` imports `internal/adapters/whitebit` directly
 **Severity:** high
 
-The cmd layer inspects concrete adapter sentinel errors:
+`cmd/order/errors.go` imports the WhiteBIT adapter package to check what kind of error
+came back from a failed order:
 
 ```go
 // cmd/order/errors.go
@@ -43,14 +44,25 @@ case errors.Is(err, whitebit.ErrForbidden):
 case errors.Is(err, whitebit.ErrUnauthorized):
 ```
 
-This couples the cmd layer to a specific concrete adapter. If the adapter is ever
-replaced or wrapped, cmd breaks. The `cmd/auth` layer already demonstrates the correct
-pattern: errors surface through port-level sentinels only.
+The problem: the command layer is now directly reading WhiteBIT-specific error values.
+If the adapter is ever swapped out, renamed, or wrapped behind a different backend,
+this import breaks and the cmd code has to change — even though the command itself
+has nothing to do with HTTP or WhiteBIT internals.
 
-**Fix:** Move error classification (`ErrForbidden`, `ErrUnauthorized`) into
-`CollateralOrderExecutorAdapter.PlaceCollateralLimitOrder`. Expose normalized sentinels
-through `internal/app/ports/collateral.go`. The cmd layer then only inspects port errors.
-This fix also eliminates GAP-006 (duplicated string-scraping logic) automatically.
+The correct pattern (already used in `cmd/auth`) is:
+- the adapter catches WhiteBIT-specific errors internally and converts them to
+  plain named error variables defined in `internal/app/ports/`
+- the command layer only checks those port-defined errors, never adapter internals
+
+So instead of `whitebit.ErrForbidden` leaking into cmd, the adapter would translate it
+to something like `ports.ErrInsufficientPermissions`, which the command checks.
+The command stays clean and ignorant of WhiteBIT details.
+
+**Fix:** Inside `CollateralOrderExecutorAdapter.PlaceCollateralLimitOrder`, catch
+`whitebit.ErrForbidden` and `whitebit.ErrUnauthorized` and return port-defined errors
+instead. Define those error variables in `internal/app/ports/collateral.go`. Update
+`cmd/order/errors.go` to check the port errors — remove the whitebit import entirely.
+This fix also eliminates GAP-007 (the duplicated error-scraping logic) automatically.
 
 ---
 
