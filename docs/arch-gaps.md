@@ -10,39 +10,6 @@ Severity scale: **high** | **medium** | **low**
 
 ## Dependency Direction Violations
 
-### GAP-003 — `cmd/auth/errors.go` imports an error from the service package instead of ports
-**Severity:** low
-
-**What is wrong:**
-
-`cmd/auth/errors.go` imports the auth service package to use one named error variable —
-`ErrNotLoggedIn`:
-
-```go
-// cmd/auth/errors.go
-import authservice "github.com/ChewX3D/wbcli/internal/app/services/auth"
-
-{match: authservice.ErrNotLoggedIn, message: "..."},
-```
-
-**Why it matters:**
-
-The command layer (`cmd/`) should only depend on the boundary layer (`ports/`), never
-on service internals. Right now it reaches into the service package just to grab this
-one error. If the service package is ever renamed, reorganized, or replaced, the command
-code breaks for no reason.
-
-A similar error — `ErrCredentialNotFound` — already lives in `internal/app/ports/auth.go`
-where it belongs. `ErrNotLoggedIn` should sit right next to it.
-
-**Fix:**
-
-Move the `ErrNotLoggedIn` declaration from `internal/app/services/auth/errors.go` to
-`internal/app/ports/auth.go`. Update all imports in the service and cmd packages to
-point to `ports` instead.
-
----
-
 ### GAP-004 — `SystemClock` lives in the service package instead of adapters
 **Severity:** low
 
@@ -207,11 +174,10 @@ never stored as a mutable global.
 | Order | Finding | Reason |
 |-------|---------|--------|
 | 1 | GAP-009 | Remove mutable global; pass factory as parameter |
-| 2 | GAP-003 | Move `ErrNotLoggedIn` to ports; small isolated change |
-| 3 | GAP-005 | Move PostOnly+IOC rule out of transport client |
-| 4 | GAP-006 | Decide: wire bulk orders fully or remove dead code |
-| 5 | GAP-004 | Move `SystemClock` to adapters |
-| 6 | GAP-008 | Extract `boolRef` to shared utility |
+| 2 | GAP-005 | Move PostOnly+IOC rule out of transport client |
+| 3 | GAP-006 | Decide: wire bulk orders fully or remove dead code |
+| 4 | GAP-004 | Move `SystemClock` to adapters |
+| 5 | GAP-008 | Extract `boolRef` to shared utility |
 
 ---
 
@@ -257,3 +223,16 @@ re-implement classification that the adapter already did.
 
 **Resolution:** Fixing GAP-002 eliminated this. The helpers now live only in
 `internal/adapters/whitebit/apierror.go`.
+
+---
+
+### GAP-003 — `cmd/auth/errors.go` imported `ErrNotLoggedIn` from service package
+**Severity:** ~~low~~ — **resolved**
+
+`cmd/auth/errors.go` imported the auth service package just to use `ErrNotLoggedIn`.
+This error meant the same thing as `ports.ErrCredentialNotFound` — both produced the
+identical user message: "not logged in; run wbcli auth login first".
+
+**Resolution:** Deleted `ErrNotLoggedIn` entirely. `ports.ErrCredentialNotFound` is
+the single error for "not logged in". Removed the `authservice` import from
+`cmd/auth/errors.go` and deleted `internal/app/services/auth/errors.go`.

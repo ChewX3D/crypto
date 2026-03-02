@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/ChewX3D/wbcli/internal/app/ports"
-	authservice "github.com/ChewX3D/wbcli/internal/app/services/auth"
 	clitools "github.com/ChewX3D/wbcli/internal/cli"
 	domainauth "github.com/ChewX3D/wbcli/internal/domain/auth"
 )
@@ -20,7 +19,6 @@ var staticAuthErrorRules = []staticAuthErrorRule{
 	{match: clitools.ErrCredentialInputMissing, message: "stdin credentials are required: first line API key, second line API secret"},
 	{match: clitools.ErrCredentialInputTooLarge, message: "stdin credential payload exceeds maximum allowed size"},
 	{match: clitools.ErrCredentialInputFormat, message: "stdin credential payload must contain exactly two non-empty lines: api_key then api_secret"},
-	{match: authservice.ErrNotLoggedIn, message: "not logged in; run wbcli auth login first"},
 	{match: ports.ErrCredentialNotFound, message: "not logged in; run wbcli auth login first"},
 	{match: ports.ErrSecretStoreUnavailable, message: "os-keychain backend is unavailable on this system; install/unlock keychain backend and retry"},
 	{match: ports.ErrSecretStorePermissionDenied, message: "os-keychain access denied; keychain is locked or access is restricted"},
