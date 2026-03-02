@@ -31,6 +31,12 @@ func TestFileSessionStoreWritesMetadataOnlyWith0600Permissions(t *testing.T) {
 		t.Fatalf("read config: %v", err)
 	}
 	text := string(fileData)
+	if strings.HasPrefix(strings.TrimSpace(text), "{") {
+		t.Fatalf("expected yaml output, got json payload: %s", text)
+	}
+	if !strings.Contains(text, "schema_version: 2") {
+		t.Fatalf("expected yaml schema_version entry, got: %s", text)
+	}
 	if strings.Contains(text, "api_secret") || strings.Contains(text, "secret") {
 		t.Fatalf("config must not contain secret values, got: %s", text)
 	}
@@ -52,5 +58,35 @@ func TestFileSessionStoreWritesMetadataOnlyWith0600Permissions(t *testing.T) {
 	}
 	if session.Backend != "os-keychain" {
 		t.Fatalf("expected backend os-keychain, got %q", session.Backend)
+	}
+}
+
+func TestFileSessionStoreReadsLegacyJSONConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	content := `{
+  "schema_version": 2,
+  "session": {
+    "backend": "os-keychain",
+    "api_key_hint": "ab***yz",
+    "hedge_mode": true,
+    "created_at": "2026-03-02T10:00:00Z",
+    "updated_at": "2026-03-02T10:10:00Z"
+  }
+}
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	store := NewFileSessionStore(configPath)
+	session, found, err := store.GetSession(context.Background())
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected session to exist")
+	}
+	if session.HedgeMode == nil || !*session.HedgeMode {
+		t.Fatalf("expected hedge_mode=true from legacy json config, got %#v", session.HedgeMode)
 	}
 }

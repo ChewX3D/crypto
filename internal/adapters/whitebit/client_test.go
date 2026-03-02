@@ -202,6 +202,9 @@ func TestCredentialVerifierAdapterVerifyReturnsEndpointOnSuccess(t *testing.T) {
 	if result.Endpoint != collateralAccountHedgeModePath {
 		t.Fatalf("expected endpoint %q, got %q", collateralAccountHedgeModePath, result.Endpoint)
 	}
+	if !result.HedgeMode {
+		t.Fatalf("expected hedge_mode=true, got false")
+	}
 }
 
 func TestCredentialVerifierAdapterUnauthorizedActionDeniedMapsToInsufficientAccess(t *testing.T) {

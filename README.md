@@ -66,7 +66,7 @@ go run . --help
 1. API key
 2. API secret
 
-`auth login` validates credentials by sending a signed `POST /api/v4/collateral-account/hedge-mode` request to WhiteBIT before saving them locally.
+`auth login` validates credentials by sending a signed `POST /api/v4/collateral-account/hedge-mode` request to WhiteBIT before saving them locally, and stores current hedge-mode in session metadata.
 
 Local shell example:
 
@@ -114,12 +114,19 @@ Single order placement:
 wbcli collateral order place --market BTC_PERP --side buy --amount 0.01 --price 50000
 ```
 
-Alias side values are accepted in CLI:
+All side values accepted by CLI:
 
 ```bash
 wbcli collateral order place --market BTC_PERP --side long --amount 0.01 --price 50000
 wbcli collateral order place --market BTC_PERP --side short --amount 0.01 --price 50000
 ```
+
+Hedge-mode behavior:
+
+- in hedge mode, `long|buy` is sent as `side=buy, positionSide=long`
+- in hedge mode, `short|sell` is sent as `side=sell, positionSide=short`
+- in one-way mode, `positionSide` is omitted
+- if WhiteBIT returns `hedgeMode: Order's position side does not match user's setting`, CLI refreshes hedge-mode via `/api/v4/collateral-account/hedge-mode`, updates config metadata, and retries once
 
 Machine-readable output:
 
@@ -130,7 +137,7 @@ wbcli collateral order place --market BTC_PERP --side sell --amount 0.01 --price
 Security notes:
 
 - do not pass API key or secret as command arguments
-- metadata only is written to `~/.wbcli/config.yaml`
+- metadata only is written to `~/.wbcli/config.yaml` in YAML format (legacy JSON is still readable)
 - credentials are stored via `os-keychain` backend
 - if you had old profile-based auth data, re-login once with the new single-session model
 

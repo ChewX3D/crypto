@@ -27,7 +27,7 @@ func newPlaceCmd(getApplication func() (*appcontainer.Application, error)) *cobr
 		Use:   "place",
 		Short: "Place a single collateral limit order",
 		Long: "Place one collateral limit order through WhiteBIT signed API using current single-session credentials.\n" +
-			"Side aliases are accepted (`buy|long`, `sell|short`) and normalized in CLI.\n" +
+			"Supported side values are `buy`, `sell`, `long`, `short`.\n" +
 			"Order submission always enforces `postOnly=true`.",
 		Example: `  # canonical side value
   wbcli collateral order place --market BTC_PERP --side buy --amount 0.01 --price 50000

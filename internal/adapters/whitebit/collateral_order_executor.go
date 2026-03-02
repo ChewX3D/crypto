@@ -23,6 +23,19 @@ func NewDefaultCollateralOrderExecutorAdapter() *CollateralOrderExecutorAdapter 
 	return NewCollateralOrderExecutorAdapter(NewDefaultClient())
 }
 
+// GetCollateralAccountHedgeMode reads current account hedge mode from WhiteBIT.
+func (adapter *CollateralOrderExecutorAdapter) GetCollateralAccountHedgeMode(
+	ctx context.Context,
+	credential domainauth.Credential,
+) (bool, error) {
+	response, err := adapter.client.GetCollateralAccountHedgeMode(ctx, credential)
+	if err != nil {
+		return false, err
+	}
+
+	return response.HedgeMode, nil
+}
+
 // PlaceCollateralLimitOrder maps app request to WhiteBIT payload and executes signed request.
 func (adapter *CollateralOrderExecutorAdapter) PlaceCollateralLimitOrder(
 	ctx context.Context,
@@ -34,6 +47,7 @@ func (adapter *CollateralOrderExecutorAdapter) PlaceCollateralLimitOrder(
 	return adapter.client.PlaceCollateralLimitOrder(ctx, credential, CollateralLimitOrderRequest{
 		Market:        request.Market,
 		Side:          OrderSide(request.Side),
+		PositionSide:  PositionSide(request.PositionSide),
 		Amount:        request.Amount,
 		Price:         request.Price,
 		ClientOrderID: request.ClientOrderID,

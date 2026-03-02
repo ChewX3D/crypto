@@ -343,8 +343,8 @@ func TestCollateralOrderPlaceSuccessTableOutput(t *testing.T) {
 	if !strings.Contains(stdout, "request_id=order-123") {
 		t.Fatalf("expected request_id in table output, got: %q", stdout)
 	}
-	if placeUseCase.lastRequest.Side != "buy" {
-		t.Fatalf("expected side alias normalization to buy, got %q", placeUseCase.lastRequest.Side)
+	if placeUseCase.lastRequest.Side != "long" {
+		t.Fatalf("expected canonical side passthrough long, got %q", placeUseCase.lastRequest.Side)
 	}
 	if placeUseCase.lastRequest.ClientOrderID != "bot-001" {
 		t.Fatalf("expected client order id pass-through, got %q", placeUseCase.lastRequest.ClientOrderID)

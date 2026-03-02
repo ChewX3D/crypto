@@ -99,6 +99,7 @@ Removed commands:
 - login performs signed connectivity validation with WhiteBIT via:
   - `POST /api/v4/collateral-account/hedge-mode`
   - request body includes `request` + monotonic `nonce`
+  - probe response hedge mode is written to session metadata config
   - credentials are persisted only when probe succeeds
 
 Outputs:
@@ -112,7 +113,9 @@ Outputs:
 Storage/security boundaries:
 
 - secrets are stored in `os-keychain` backend only
-- non-secret metadata is stored in `~/.wbcli/config.yaml`
+- non-secret metadata is stored in `~/.wbcli/config.yaml` as YAML
+- runtime config reader must support legacy JSON content for backward compatibility; writer persists YAML only
+- session metadata includes cached `hedge_mode` from WhiteBIT probe
 - config permission target on macOS/Linux: `0600`
 - command outputs/errors must not leak API secret, payload, or signature values
 
@@ -134,11 +137,13 @@ Current model:
 - optional flags:
   - `--client-order-id` (pass-through only)
   - `--output table|json` (default `table`)
-- side aliases are normalized in CLI adapter layer only:
-  - `buy|long` -> `buy`
-  - `sell|short` -> `sell`
+- accepted side values are: `buy`, `sell`, `long`, `short`
 - command always submits `postOnly=true`
 - no `--profile`, no `--expiration`
+- request mapping is hedge-mode-aware:
+  - hedge mode `true`: `long|buy` -> `side=buy, positionSide=long`; `short|sell` -> `side=sell, positionSide=short`
+  - hedge mode `false`: `positionSide` is omitted and side is normalized to `buy|sell`
+- if order submission fails with WhiteBIT hedge-mode mismatch (`hedgeMode: Order's position side does not match user's setting`), service refreshes hedge mode via `/api/v4/collateral-account/hedge-mode`, persists it in config, and retries once
 
 Output contract:
 

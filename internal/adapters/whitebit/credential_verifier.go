@@ -34,9 +34,12 @@ func (adapter *CredentialVerifierAdapter) Verify(ctx context.Context, credential
 		)
 	}
 
-	_, err := adapter.client.GetCollateralAccountHedgeMode(ctx, credential)
+	response, err := adapter.client.GetCollateralAccountHedgeMode(ctx, credential)
 	if err == nil {
-		return ports.CredentialVerificationResult{Endpoint: collateralAccountHedgeModePath}, nil
+		return ports.CredentialVerificationResult{
+			Endpoint:  collateralAccountHedgeModePath,
+			HedgeMode: response.HedgeMode,
+		}, nil
 	}
 
 	return ports.CredentialVerificationResult{}, ports.NewCredentialVerificationError(

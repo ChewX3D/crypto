@@ -25,6 +25,7 @@ Optional:
 
 - `clientOrderId`
 - `postOnly`
+- `positionSide` (`long` or `short`) when account hedge mode requires explicit position side
 
 ## Authentication and Signing
 
@@ -78,6 +79,13 @@ Normalize errors into categories:
 - validation errors (price/amount precision, invalid market)
 - risk/business rule rejections
 - temporary transport/server failures (retryable)
+
+Hedge-mode recovery policy for single order placement:
+
+- detect WhiteBIT mismatch message: `hedgeMode: Order's position side does not match user's setting`
+- fetch fresh mode with `POST /api/v4/collateral-account/hedge-mode`
+- persist refreshed `hedge_mode` in `~/.wbcli/config.yaml`
+- rebuild request for the refreshed mode and retry once
 
 ## Range Order Mapping
 

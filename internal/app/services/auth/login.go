@@ -78,6 +78,7 @@ func (service *LoginService) Execute(ctx context.Context, request LoginRequest) 
 	session := ports.SessionMetadata{
 		Backend:    service.credentialStore.BackendName(),
 		APIKeyHint: domainauth.APIKeyHint(request.APIKey),
+		HedgeMode:  boolRef(verificationResult.HedgeMode),
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -97,4 +98,9 @@ func (service *LoginService) Execute(ctx context.Context, request LoginRequest) 
 		APIKeyHint: session.APIKeyHint,
 		SavedAt:    now.Format("2006-01-02T15:04:05Z07:00"),
 	}, nil
+}
+
+func boolRef(value bool) *bool {
+	allocated := value
+	return &allocated
 }

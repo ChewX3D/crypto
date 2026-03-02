@@ -1,6 +1,6 @@
 # Ticket Board
 
-_Last updated: 2026-03-02T12:33:48+01:00_
+_Last updated: 2026-03-02T16:17:18+01:00_
 
 ## Backlog
 - [PROJ-2026-004](./backlog/PROJ-2026-004-add-order-range-planner-with-constant-and-arithmetic-amount-modes.md) | P1 | Owner: chewbaccalol | Due: 2026-03-06 | Add order range planner with constant and arithmetic amount modes
@@ -29,6 +29,7 @@ _Last updated: 2026-03-02T12:33:48+01:00_
 - [PROJ-2026-002](./done/PROJ-2026-002-implement-whitebit-signed-http-client.md) | P1 | Owner: chewbaccalol | Due: 2026-03-03 | Implement WhiteBIT signed HTTP client
 - [PROJ-2026-003](./done/PROJ-2026-003-add-order-place-command-using-collateral-limit-order-endpoint.md) | P1 | Owner: chewbaccalol | Due: 2026-03-05 | Add collateral order place command using collateral limit order endpoint
 - [PROJ-2026-016](./done/PROJ-2026-016-remove-auth-profiles-and-switch-to-single-session.md) | P1 | Owner: nocle | Due: 2026-03-03 | Remove auth profiles and switch to single-session auth
+- [PROJ-2026-018](./done/PROJ-2026-018-switch-session-config-to-yaml-and-add-hedge-mode-aware-collateral-order-retry.md) | P1 | Owner: nocle | Due: None | Switch session config to YAML and add hedge-mode-aware collateral order retry
 
 ## Archived
 - [PROJ-2026-005](./archived/PROJ-2026-005-initialize-go-module-and-cli-command-scaffold.md) | P0 | Owner: chewbaccalol | Due: 2026-02-28 | Initialize Go module and CLI command scaffold

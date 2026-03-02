@@ -48,10 +48,14 @@ func validateBase(options baseOptions) error {
 
 func normalizeSideAlias(side string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(side)) {
-	case "buy", "long":
+	case "buy":
 		return "buy", true
-	case "sell", "short":
+	case "long":
+		return "long", true
+	case "sell":
 		return "sell", true
+	case "short":
+		return "short", true
 	default:
 		return "", false
 	}

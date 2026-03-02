@@ -130,10 +130,10 @@ func TestNormalizeSideAlias(t *testing.T) {
 		wantOK   bool
 	}{
 		{name: "buy", input: "buy", wantSide: "buy", wantOK: true},
-		{name: "long alias", input: "long", wantSide: "buy", wantOK: true},
+		{name: "long alias", input: "long", wantSide: "long", wantOK: true},
 		{name: "sell", input: "sell", wantSide: "sell", wantOK: true},
-		{name: "short alias", input: "short", wantSide: "sell", wantOK: true},
-		{name: "case insensitive", input: "LoNg", wantSide: "buy", wantOK: true},
+		{name: "short alias", input: "short", wantSide: "short", wantOK: true},
+		{name: "case insensitive", input: "LoNg", wantSide: "long", wantOK: true},
 		{name: "unsupported", input: "hold", wantSide: "", wantOK: false},
 	}
 

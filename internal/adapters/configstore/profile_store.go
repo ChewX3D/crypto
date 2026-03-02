@@ -1,12 +1,15 @@
 package configstore
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +31,7 @@ type storedConfig struct {
 type storedSession struct {
 	Backend    string `json:"backend,omitempty"`
 	APIKeyHint string `json:"api_key_hint,omitempty"`
+	HedgeMode  *bool  `json:"hedge_mode,omitempty"`
 	CreatedAt  string `json:"created_at,omitempty"`
 	UpdatedAt  string `json:"updated_at,omitempty"`
 }
@@ -75,6 +79,7 @@ func (store *FileSessionStore) SaveSession(_ context.Context, session ports.Sess
 	config.Session = &storedSession{
 		Backend:    session.Backend,
 		APIKeyHint: session.APIKeyHint,
+		HedgeMode:  copyBoolPtr(session.HedgeMode),
 		CreatedAt:  session.CreatedAt.UTC().Format(timestampLayoutRFC3339),
 		UpdatedAt:  session.UpdatedAt.UTC().Format(timestampLayoutRFC3339),
 	}
@@ -131,8 +136,8 @@ func (store *FileSessionStore) loadConfig() (storedConfig, error) {
 		return storedConfig{SchemaVersion: configSchemaVersionV2}, nil
 	}
 
-	var config storedConfig
-	if err := json.Unmarshal(fileData, &config); err != nil {
+	config, err := decodeConfig(fileData)
+	if err != nil {
 		return storedConfig{}, fmt.Errorf("decode session config: %w", err)
 	}
 	if config.SchemaVersion == 0 {
@@ -164,12 +169,11 @@ func (store *FileSessionStore) saveConfig(config storedConfig) error {
 		return fmt.Errorf("set temp config mode: %w", err)
 	}
 
-	encoded, err := json.MarshalIndent(config, "", "  ")
+	encoded, err := encodeConfigYAML(config)
 	if err != nil {
 		tempFile.Close()
 		return fmt.Errorf("encode session config: %w", err)
 	}
-	encoded = append(encoded, '\n')
 
 	if _, err := tempFile.Write(encoded); err != nil {
 		tempFile.Close()
@@ -202,6 +206,7 @@ func storedToSession(session storedSession) (ports.SessionMetadata, error) {
 	return ports.SessionMetadata{
 		Backend:    session.Backend,
 		APIKeyHint: session.APIKeyHint,
+		HedgeMode:  copyBoolPtr(session.HedgeMode),
 		CreatedAt:  createdAt,
 		UpdatedAt:  updatedAt,
 	}, nil
@@ -218,4 +223,192 @@ func parseTimestamp(value string) (time.Time, error) {
 	}
 
 	return parsed, nil
+}
+
+func decodeConfig(fileData []byte) (storedConfig, error) {
+	var config storedConfig
+	if err := json.Unmarshal(fileData, &config); err == nil {
+		return config, nil
+	}
+
+	return decodeYAMLConfig(fileData)
+}
+
+func decodeYAMLConfig(fileData []byte) (storedConfig, error) {
+	config := storedConfig{}
+	var (
+		inSession bool
+		session   *storedSession
+	)
+
+	scanner := bufio.NewScanner(strings.NewReader(string(fileData)))
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == 0 {
+			inSession = false
+
+			key, value, hasValue, err := splitYAMLKeyValue(trimmed)
+			if err != nil {
+				return storedConfig{}, fmt.Errorf("line %d: %w", lineNumber, err)
+			}
+
+			switch key {
+			case "schema_version":
+				if !hasValue {
+					return storedConfig{}, fmt.Errorf("line %d: schema_version requires a value", lineNumber)
+				}
+				parsed, err := strconv.Atoi(value)
+				if err != nil {
+					return storedConfig{}, fmt.Errorf("line %d: parse schema_version: %w", lineNumber, err)
+				}
+				config.SchemaVersion = parsed
+			case "session":
+				if hasValue && strings.TrimSpace(value) != "" {
+					return storedConfig{}, fmt.Errorf("line %d: session must be a map", lineNumber)
+				}
+				session = &storedSession{}
+				config.Session = session
+				inSession = true
+			default:
+				continue
+			}
+
+			continue
+		}
+
+		if !inSession || session == nil {
+			continue
+		}
+		if indent < 2 {
+			return storedConfig{}, fmt.Errorf("line %d: invalid indentation", lineNumber)
+		}
+
+		key, value, hasValue, err := splitYAMLKeyValue(strings.TrimSpace(line))
+		if err != nil {
+			return storedConfig{}, fmt.Errorf("line %d: %w", lineNumber, err)
+		}
+		if !hasValue {
+			return storedConfig{}, fmt.Errorf("line %d: key %q requires a value", lineNumber, key)
+		}
+
+		switch key {
+		case "backend":
+			session.Backend = value
+		case "api_key_hint":
+			session.APIKeyHint = value
+		case "created_at":
+			session.CreatedAt = value
+		case "updated_at":
+			session.UpdatedAt = value
+		case "hedge_mode":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return storedConfig{}, fmt.Errorf("line %d: parse hedge_mode: %w", lineNumber, err)
+			}
+			session.HedgeMode = copyBoolPtr(&parsed)
+		default:
+			continue
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return storedConfig{}, err
+	}
+
+	return config, nil
+}
+
+func splitYAMLKeyValue(line string) (string, string, bool, error) {
+	index := strings.IndexRune(line, ':')
+	if index <= 0 {
+		return "", "", false, fmt.Errorf("invalid key/value format")
+	}
+
+	key := strings.TrimSpace(line[:index])
+	if key == "" {
+		return "", "", false, fmt.Errorf("empty key")
+	}
+
+	rest := strings.TrimSpace(line[index+1:])
+	if rest == "" {
+		return key, "", false, nil
+	}
+
+	value, err := decodeYAMLScalar(rest)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	return key, value, true, nil
+}
+
+func decodeYAMLScalar(value string) (string, error) {
+	if len(value) < 2 {
+		return value, nil
+	}
+	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+		decoded, err := strconv.Unquote(value)
+		if err != nil {
+			return "", fmt.Errorf("unquote value: %w", err)
+		}
+		return decoded, nil
+	}
+	if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+		return strings.ReplaceAll(value[1:len(value)-1], "''", "'"), nil
+	}
+
+	return value, nil
+}
+
+func encodeConfigYAML(config storedConfig) ([]byte, error) {
+	builder := strings.Builder{}
+	builder.WriteString("schema_version: ")
+	builder.WriteString(strconv.Itoa(config.SchemaVersion))
+	builder.WriteString("\n")
+
+	if config.Session != nil {
+		builder.WriteString("session:\n")
+		writeSessionString(&builder, "backend", config.Session.Backend)
+		writeSessionString(&builder, "api_key_hint", config.Session.APIKeyHint)
+		if config.Session.HedgeMode != nil {
+			builder.WriteString("  hedge_mode: ")
+			if *config.Session.HedgeMode {
+				builder.WriteString("true\n")
+			} else {
+				builder.WriteString("false\n")
+			}
+		}
+		writeSessionString(&builder, "created_at", config.Session.CreatedAt)
+		writeSessionString(&builder, "updated_at", config.Session.UpdatedAt)
+	}
+
+	return []byte(builder.String()), nil
+}
+
+func writeSessionString(builder *strings.Builder, key string, value string) {
+	if value == "" {
+		return
+	}
+
+	builder.WriteString("  ")
+	builder.WriteString(key)
+	builder.WriteString(": ")
+	builder.WriteString(strconv.Quote(value))
+	builder.WriteString("\n")
+}
+
+func copyBoolPtr(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+
+	allocated := *value
+	return &allocated
 }

@@ -11,6 +11,7 @@ import (
 type CollateralLimitOrderRequest struct {
 	Market        string
 	Side          string
+	PositionSide  string
 	Amount        string
 	Price         string
 	ClientOrderID string
@@ -19,6 +20,10 @@ type CollateralLimitOrderRequest struct {
 
 // CollateralOrderExecutor submits collateral orders to external exchange APIs.
 type CollateralOrderExecutor interface {
+	GetCollateralAccountHedgeMode(
+		ctx context.Context,
+		credential domainauth.Credential,
+	) (bool, error)
 	PlaceCollateralLimitOrder(
 		ctx context.Context,
 		credential domainauth.Credential,

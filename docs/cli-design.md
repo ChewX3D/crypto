@@ -22,7 +22,8 @@ Provide a safe, scriptable CLI for WhiteBIT collateral trading with enough struc
 Implementation notes:
 
 - store secrets using platform secret storage (Keychain/libsecret/Credential Manager)
-- keep only non-sensitive metadata in `~/.wbcli/config.yaml` (backend, timestamps, key hint)
+- keep only non-sensitive metadata in `~/.wbcli/config.yaml` as YAML (`backend`, `timestamps`, `key hint`, cached `hedge_mode`)
+- runtime reader must support legacy JSON payloads from older versions; writer persists YAML only
 - `auth login` accepts credentials only from stdin payload (first line API key, second line API secret)
 - `auth login` performs signed connectivity validation via `POST /api/v4/collateral-account/hedge-mode` before persisting credentials
 - no profile concept in auth flow; single-session mode only (`logged in` or `logged out`)
@@ -62,10 +63,15 @@ wbcli collateral order place \
 
 Flow:
 
-1. validate required flags and normalize side aliases (`buy|long`, `sell|short`) in CLI adapter
+1. validate required flags and normalize side value to one of `buy|sell|long|short` in CLI adapter
 2. load credentials from single-session secure storage
-3. sign WhiteBIT request and submit order with `postOnly=true`
-4. print normalized output contract in `table` or `json` format
+3. resolve account hedge-mode from session metadata (or refresh via `/api/v4/collateral-account/hedge-mode` if missing)
+4. build request shape by hedge-mode:
+   - hedge mode: send `positionSide` (`long|short`) with matching `side` (`buy|sell`)
+   - one-way mode: omit `positionSide`
+5. sign WhiteBIT request and submit order with `postOnly=true`
+6. if response contains hedge-mode mismatch (`hedgeMode: Order's position side does not match user's setting`), refresh hedge-mode, persist it, and retry once
+7. print normalized output contract in `table` or `json` format
 
 ### `wbcli collateral order range`
 

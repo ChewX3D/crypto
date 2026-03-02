@@ -97,7 +97,7 @@ func NewDefault() (*Application, error) {
 		authservice.NewLoginService(credentialStore, sessionStore, clock, credentialVerifier),
 		authservice.NewLogoutService(credentialStore, sessionStore),
 		authservice.NewStatusService(sessionStore),
-		collateralservice.NewPlaceOrderService(credentialStore, collateralOrderExecutor, clock),
+		collateralservice.NewPlaceOrderService(credentialStore, sessionStore, collateralOrderExecutor, clock),
 	), nil
 }
 

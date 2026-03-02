@@ -90,6 +90,7 @@ func (err *CredentialVerificationError) Unwrap() error {
 type SessionMetadata struct {
 	Backend    string
 	APIKeyHint string
+	HedgeMode  *bool
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
@@ -117,7 +118,8 @@ type Clock interface {
 
 // CredentialVerificationResult contains non-secret verification metadata.
 type CredentialVerificationResult struct {
-	Endpoint string
+	Endpoint  string
+	HedgeMode bool
 }
 
 // CredentialVerifier verifies credential validity and required permission against WhiteBIT.

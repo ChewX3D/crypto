@@ -76,6 +76,7 @@ type fakeCredentialVerifier struct {
 	callCount  int
 	lastAPIKey string
 	endpoint   string
+	hedgeMode  bool
 }
 
 func (verifier *fakeCredentialVerifier) Verify(_ context.Context, credential domainauth.Credential) (ports.CredentialVerificationResult, error) {
@@ -85,13 +86,19 @@ func (verifier *fakeCredentialVerifier) Verify(_ context.Context, credential dom
 		return ports.CredentialVerificationResult{}, verifier.err
 	}
 
-	return ports.CredentialVerificationResult{Endpoint: verifier.endpoint}, nil
+	return ports.CredentialVerificationResult{
+		Endpoint:  verifier.endpoint,
+		HedgeMode: verifier.hedgeMode,
+	}, nil
 }
 
 func TestLoginServiceExecuteSuccess(t *testing.T) {
 	credentialStore := &fakeCredentialStore{backendName: "os-keychain"}
 	sessionStore := &fakeSessionStore{}
-	credentialVerifier := &fakeCredentialVerifier{endpoint: "/api/v4/collateral-account/hedge-mode"}
+	credentialVerifier := &fakeCredentialVerifier{
+		endpoint:  "/api/v4/collateral-account/hedge-mode",
+		hedgeMode: true,
+	}
 	service := NewLoginService(
 		credentialStore,
 		sessionStore,
@@ -131,6 +138,9 @@ func TestLoginServiceExecuteSuccess(t *testing.T) {
 	if sessionStore.session.Backend != "os-keychain" {
 		t.Fatalf("expected session backend os-keychain, got %q", sessionStore.session.Backend)
 	}
+	if sessionStore.session.HedgeMode == nil || !*sessionStore.session.HedgeMode {
+		t.Fatalf("expected hedge mode true in stored session, got %#v", sessionStore.session.HedgeMode)
+	}
 	if string(secret) != "\x00\x00\x00\x00\x00\x00\x00\x00" {
 		t.Fatalf("expected request secret bytes to be wiped, got %q", string(secret))
 	}
@@ -142,7 +152,10 @@ func TestLoginServiceExecuteOverwritesExistingCredential(t *testing.T) {
 		credential:  &domainauth.Credential{APIKey: "old", APISecret: []byte("old-secret")},
 	}
 	sessionStore := &fakeSessionStore{}
-	credentialVerifier := &fakeCredentialVerifier{endpoint: "/api/v4/collateral-account/hedge-mode"}
+	credentialVerifier := &fakeCredentialVerifier{
+		endpoint:  "/api/v4/collateral-account/hedge-mode",
+		hedgeMode: false,
+	}
 	service := NewLoginService(credentialStore, sessionStore, fixedClock{now: time.Now()}, credentialVerifier)
 
 	result, err := service.Execute(context.Background(), LoginRequest{
