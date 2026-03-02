@@ -252,6 +252,25 @@ Rules:
 - push only when local `main` is up to date with `origin/main`
 - always push immediately after each commit (do not batch local commits)
 
+Commit and push trigger events (MANDATORY for agents):
+
+Agents must commit and push after every one of the following events — do not batch:
+
+- any source file is created or deleted
+- any interface signature changes
+- any new type, constant, or error sentinel is added
+- a function or method implementation is completed (even if tests are not written yet)
+- a test file is created or a test case is added
+- a bug fix is applied (one commit per fix)
+- a doc file or in-code comment block is updated
+- a ticket status or acceptance criterion is updated
+- `gofmt`, `go vet`, or `go build` is run and passes after a change
+- a refactor step is completed (move, rename, extract — one commit per step)
+- any change to `AGENTS.md` or `CLAUDE.md`
+
+Never accumulate more than one logical change in the working tree before committing.
+If in doubt whether to commit — commit.
+
 ## Change Checklist And Review Standards
 
 For trunk-based direct commits to `main`, each change set (commit or small commit series) must include:
@@ -611,7 +630,8 @@ What goes where:
   - this is the correct location for feature services (for example auth login service)
   - may depend on `internal/domain` and `internal/app/ports` only
 - `internal/app/application/`
-  - application container and factory wiring for command adapters
+  - composition root: the only package inside `internal/` permitted to import concrete adapter packages
+  - wires concrete adapters into services for the runtime application container
   - exposes use-case interfaces grouped by feature areas (for example `AuthUseCases`)
   - composes concrete adapters/services in one place for runtime and test overrides
 - `internal/app/ports/`
