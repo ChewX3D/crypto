@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ChewX3D/wbcli/internal/adapters/clock"
 	"github.com/ChewX3D/wbcli/internal/adapters/configstore"
 	"github.com/ChewX3D/wbcli/internal/adapters/secretstore"
 	"github.com/ChewX3D/wbcli/internal/adapters/whitebit"
@@ -91,7 +92,7 @@ func NewDefault() (*Application, error) {
 	credentialStore := secretstore.NewOSKeychainStore()
 	credentialVerifier := whitebit.NewDefaultCredentialVerifierAdapter()
 	collateralOrderExecutor := whitebit.NewDefaultCollateralOrderExecutorAdapter()
-	clock := authservice.SystemClock{}
+	clock := clock.Real{}
 
 	return NewWithServices(
 		authservice.NewLoginService(credentialStore, sessionStore, clock, credentialVerifier),

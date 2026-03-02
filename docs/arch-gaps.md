@@ -10,42 +10,6 @@ Severity scale: **high** | **medium** | **low**
 
 ## Dependency Direction Violations
 
-### GAP-004 — `SystemClock` lives in the service package instead of adapters
-**Severity:** low
-
-**What is wrong:**
-
-`SystemClock` is a concrete type that wraps `time.Now()`. It lives inside the auth
-service package:
-
-```go
-// internal/app/services/auth/clock.go
-package auth
-
-type SystemClock struct{}
-
-func (SystemClock) Now() time.Time { return time.Now() }
-```
-
-**Why it matters:**
-
-`SystemClock` implements the `ports.Clock` interface. All concrete implementations of
-port interfaces belong in `internal/adapters/`, not in service packages. Services should
-only know about the interface, not own the real implementation.
-
-This shows up in the composition root where it has to reach into the service package
-for an infrastructure type:
-
-```go
-// factory.go
-clock := authservice.SystemClock{}
-```
-
-**Fix:**
-
-Move `SystemClock` to `internal/adapters/clock/system_clock.go`. Update `factory.go`
-to import from the new adapter path.
-
 ---
 
 ## WhiteBIT Transport Client Mirror Rule Violations
@@ -176,8 +140,7 @@ never stored as a mutable global.
 | 1 | GAP-009 | Remove mutable global; pass factory as parameter |
 | 2 | GAP-005 | Move PostOnly+IOC rule out of transport client |
 | 3 | GAP-006 | Decide: wire bulk orders fully or remove dead code |
-| 4 | GAP-004 | Move `SystemClock` to adapters |
-| 5 | GAP-008 | Extract `boolRef` to shared utility |
+| 4 | GAP-008 | Extract `boolRef` to shared utility |
 
 ---
 
@@ -236,3 +199,16 @@ identical user message: "not logged in; run wbcli auth login first".
 **Resolution:** Deleted `ErrNotLoggedIn` entirely. `ports.ErrCredentialNotFound` is
 the single error for "not logged in". Removed the `authservice` import from
 `cmd/auth/errors.go` and deleted `internal/app/services/auth/errors.go`.
+
+---
+
+### GAP-004 — `SystemClock` lived in the service package instead of adapters
+**Severity:** ~~low~~ — **resolved**
+
+`SystemClock` was a concrete `ports.Clock` implementation living in the auth service
+package. The composition root had to reach into a service package for an infrastructure
+type (`authservice.SystemClock{}`).
+
+**Resolution:** Renamed to `clock.Real` and moved to `internal/adapters/clock/real.go`.
+The composition root now imports from adapters like every other concrete dependency.
+Deleted `internal/app/services/auth/clock.go`.
