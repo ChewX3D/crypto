@@ -350,6 +350,7 @@ Required implementation rules for day-to-day work:
 
 - Formatting:
   - run `gofmt` on changed Go files before commit
+  - every file must end with exactly one newline character; enforce this on all new and edited files
   - keep imports gofmt-compatible and clean (no unused imports)
   - keep package layout simple and cohesive; one package responsibility per directory
 - Naming and declarations:
