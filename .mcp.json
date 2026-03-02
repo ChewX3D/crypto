@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "whitebitdocs": {
+      "type": "http",
+      "url": "https://docs.whitebit.com/mcp"
+    }
+  }
+}
