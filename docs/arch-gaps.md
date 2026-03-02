@@ -150,7 +150,15 @@ where bugs can hide independently.
 
 **Fix:**
 
-Extract to a shared utility, for example `internal/ptrutil/ptrutil.go`.
+Delete both `boolRef` copies. Create a generic `Ptr[T]` helper in
+`internal/ptrutil/ptrutil.go` that works for any type:
+
+```go
+func Ptr[T any](v T) *T { return &v }
+```
+
+Replace `boolRef(true)` calls with `ptrutil.Ptr(true)`. The generic version also
+covers future `*string`, `*int`, etc. pointer needs without new helpers.
 
 ---
 
