@@ -7,6 +7,7 @@ import (
 
 	"github.com/ChewX3D/wbcli/internal/app/ports"
 	domainauth "github.com/ChewX3D/wbcli/internal/domain/auth"
+	"github.com/ChewX3D/wbcli/internal/ptrutil"
 )
 
 // LoginRequest is input for auth login use-case.
@@ -78,7 +79,7 @@ func (service *LoginService) Execute(ctx context.Context, request LoginRequest) 
 	session := ports.SessionMetadata{
 		Backend:    service.credentialStore.BackendName(),
 		APIKeyHint: domainauth.APIKeyHint(request.APIKey),
-		HedgeMode:  boolRef(verificationResult.HedgeMode),
+		HedgeMode:  ptrutil.Ptr(verificationResult.HedgeMode),
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -98,9 +99,4 @@ func (service *LoginService) Execute(ctx context.Context, request LoginRequest) 
 		APIKeyHint: session.APIKeyHint,
 		SavedAt:    now.Format("2006-01-02T15:04:05Z07:00"),
 	}, nil
-}
-
-func boolRef(value bool) *bool {
-	allocated := value
-	return &allocated
 }

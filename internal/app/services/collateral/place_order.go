@@ -7,6 +7,7 @@ import (
 
 	"github.com/ChewX3D/wbcli/internal/app/ports"
 	domainauth "github.com/ChewX3D/wbcli/internal/domain/auth"
+	"github.com/ChewX3D/wbcli/internal/ptrutil"
 )
 
 const (
@@ -139,7 +140,7 @@ func (service *PlaceOrderService) persistHedgeMode(ctx context.Context, hedgeMod
 	}
 
 	session.UpdatedAt = now
-	session.HedgeMode = boolRef(hedgeMode)
+	session.HedgeMode = ptrutil.Ptr(hedgeMode)
 	if err := service.sessionStore.SaveSession(ctx, session); err != nil {
 		return fmt.Errorf("save session metadata: %w", err)
 	}
@@ -192,9 +193,4 @@ func isHedgeModeMismatchError(err error) bool {
 
 	return strings.Contains(detail, "hedgemode") &&
 		strings.Contains(detail, "position side does not match user's setting")
-}
-
-func boolRef(value bool) *bool {
-	allocated := value
-	return &allocated
 }
