@@ -105,14 +105,16 @@ func NewClient(baseURL string, httpDoer HTTPDoer, nonceSource NonceSource) *Clie
 }
 
 type privateEnvelope struct {
-	Request string `json:"request"`
-	Nonce   string `json:"nonce"`
+	Request     string `json:"request"`
+	Nonce       string `json:"nonce"`
+	NonceWindow bool   `json:"nonceWindow"`
 }
 
 func (client *Client) nextPrivateEnvelope(path string) privateEnvelope {
 	return privateEnvelope{
-		Request: path,
-		Nonce:   strconv.FormatInt(client.nonceSource.Next(), 10),
+		Request:     path,
+		Nonce:       strconv.FormatInt(client.nonceSource.Next(), 10),
+		NonceWindow: true,
 	}
 }
 
