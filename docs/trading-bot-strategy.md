@@ -69,6 +69,35 @@ Maker fees (0.01% × 2 sides): ~$0.012
 Net profit per round trip: ~$0.19
 ```
 
+### Core Grid Algorithm
+
+```
+on_startup:
+  price = get_current_price()
+  for i = 1 to NUM_LEVELS:
+    place_buy(price - spacing * i)     // long grid
+    place_sell(price + spacing * i)    // short grid
+
+on_order_filled(order):
+  if order.side == BUY and order.is_grid:
+    // Long position opened → place take profit one spacing above
+    place_sell(order.price + spacing)
+
+  if order.side == SELL and order.is_take_profit:
+    // Long take profit hit → restore original grid buy
+    place_buy(order.price - spacing)
+
+  if order.side == SELL and order.is_grid:
+    // Short position opened → place take profit one spacing below
+    place_buy(order.price - spacing)
+
+  if order.side == BUY and order.is_take_profit:
+    // Short take profit hit → restore original grid sell
+    place_sell(order.price + spacing)
+```
+
+The grid is self-healing: every completed round trip returns the grid to its original shape with profit captured. The bot doesn't predict anything — it lets price oscillation do the work.
+
 ## Trend Filter: EMA(50) on 15-Minute Candles
 
 The grid runs with a directional bias based on a 50-period EMA calculated on 15-minute candlestick closes.
@@ -180,35 +209,41 @@ Level 3: Weekly drawdown > 12%
 ## Architecture
 
 ```
-┌─────────────────┐
-│  WebSocket Feed  │
-│  BTC/USDT price  │
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Trend Filter   │
-│  EMA(50) 15min  │
-└────────┬────────┘
-         │
-   ┌─────┼─────────────┐
-   │     │              │
-┌──▼──┐ ┌▼─────┐  ┌────▼─────┐
-│Long │ │Short │  │ Circuit  │
-│Grid │ │Grid  │  │ Breaker  │
-│Maker│ │Maker │  │ Monitor  │
-└──┬──┘ └┬─────┘  └────┬─────┘
-   │     │              │
-   └─────┼──────────────┘
-         │
-┌────────▼────────┐
-│   Hedge Lock    │
-│  (if triggered) │
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  PnL Tracker    │
-│  + Rebalancer   │
-└─────────────────┘
+┌──────────────────────────────────────────────────┐
+│                WebSocket Feed                     │
+│               BTC/USDT price                      │
+└──────────┬───────────────────────┬───────────────┘
+           │                       │
+    FAST LOOP (every tick)   SLOW LOOP (15-min candle close)
+           │                       │
+    ┌──────▼──────┐         ┌──────▼──────┐
+    │ Order Fill  │         │ Update EMA  │
+    │ Monitor     │         │ Trend Filter│
+    │ → place TPs │         └──────┬──────┘
+    └──────┬──────┘                │
+           │                ┌──────▼──────┐
+    ┌──────▼──────┐         │ Rebalance?  │
+    │ Circuit     │         │ Adjust bias │
+    │ Breaker     │         │ Shift grid  │
+    │ Monitor     │         └─────────────┘
+    └──────┬──────┘
+           │
+    ┌──────▼──────┐
+    │ Flash Crash │
+    │ Detector    │
+    │ (3+ levels) │
+    │ → emergency │
+    │   rebalance │
+    └──────┬──────┘
+           │
+    ┌──────▼──────┐
+    │ Hedge Lock  │
+    │ (if needed) │
+    └──────┬──────┘
+           │
+    ┌──────▼──────┐
+    │ PnL Tracker │
+    └─────────────┘
 ```
 
 ## Technical Implementation Notes
@@ -231,11 +266,113 @@ Level 3: Weekly drawdown > 12%
 
 ### Grid Rebalancing
 
-When price moves significantly, the grid needs to re-center:
+When price trends away from the grid center, orders on the far side become stale and the grid stops generating profit. The bot must detect this and re-center the grid.
 
-- If price moves above all short grid levels → cancel stale long orders, place new grid around current price
-- If price moves below all long grid levels → cancel stale short orders, place new grid around current price
-- Rebalance only on EMA update (every 15-min candle) to avoid excessive API calls
+#### Why Rebalancing Is Needed
+
+```
+Grid center: $60,000. BTC trends to $62,000.
+
+  $60,600  S3 — filled, TP waiting at $60,400 (unrealized loss)
+  $60,400  S2 — filled, TP waiting at $60,200 (unrealized loss)
+  $60,200  S1 — filled, TP waiting at $60,000 (unrealized loss)
+  ------- price is $62,000
+  $59,800  L1 — will never fill
+  $59,600  L2 — will never fill
+  $59,400  L3 — will never fill
+
+Grid is dead. All short positions are losing. Long orders are unreachable.
+```
+
+#### Two Processing Speeds
+
+The bot operates at two different speeds:
+
+**Fast loop (every WebSocket tick):**
+- Monitor order fills → place take-profits instantly
+- Monitor circuit breaker thresholds → react instantly
+- Detect flash crash / 3+ level gap → emergency rebalance instantly
+
+**Slow loop (every 15-minute candle close):**
+- Update EMA
+- Check if grid needs rebalancing
+- Adjust long/short bias based on trend filter
+- Shift grid if needed
+
+This separation keeps the bot responsive to fills and emergencies while avoiding unnecessary grid restructuring on every price tick.
+
+#### Rebalancing Algorithm
+
+```
+on_candle_close_15min(price):
+  update_ema(candle.close)
+  levels_beyond = calculate_levels_beyond_grid(price)
+
+  if levels_beyond == 0:
+    // Price inside grid. Only adjust trend bias.
+    adjust_grid_bias(ema)
+    return
+
+  if levels_beyond == 1:
+    // Slightly outside grid. Shift gradually.
+    // Cancel farthest order on opposite side.
+    // Place new order 1 level closer to current price.
+    // Don't close losing positions yet.
+    shift_grid_one_level(direction)
+    return
+
+  if levels_beyond >= 2:
+    // Clearly trending. Full rebalance.
+    cancel_all_stale_orders()
+    if losing_positions_exceed(2% of account):
+      hedge_lock(losing_positions)
+    else:
+      close(losing_positions)  // accept small loss
+    place_new_grid(current_price)
+    return
+```
+
+**Emergency rebalance (on any WebSocket tick):**
+```
+on_price_update(price):
+  levels_beyond = calculate_levels_beyond_grid(price)
+
+  if levels_beyond >= 3:
+    // Flash crash or bot restart. Don't wait for candle.
+    emergency_rebalance(price)
+    return
+```
+
+#### Gradual Shift Example
+
+```
+Grid center: $60,000, spacing: $200
+
+15-min candle closes at $60,300 (1 level beyond S1):
+  → Cancel L3 at $59,400 (farthest stale order)
+  → Place new order at $60,200
+  → Grid shifted up by 1 level without closing any positions
+
+Next candle closes at $60,500 (still 1 level beyond new grid edge):
+  → Shift up by 1 more level
+  → Grid gradually follows the trend
+
+This avoids realizing losses on temporary moves while keeping
+the grid alive during real trends.
+```
+
+#### Why Not React Instantly to Every Tick
+
+```
+BTC at $60,000:
+  12:00:00 — price spikes to $60,250 (beyond S1)
+  12:00:03 — price drops back to $60,150 (inside grid)
+
+  Instant reaction: shifted grid for no reason, wasted API calls
+  Wait for 15-min candle: did nothing. Correct decision.
+```
+
+Tying rebalancing to 15-minute candle closes naturally filters out wicks and noise. The only exception is flash crashes (3+ levels gap) which require immediate action.
 
 ## Expected Performance
 
