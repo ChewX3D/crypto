@@ -108,7 +108,18 @@ Handling differs by order type because the risk profile is opposite:
 
 #### Entry orders (grid buy/sell to open a position)
 
-Retry once as maker at current market price.
+Options considered:
+
+**A. Taker market order (fill immediately)**
+Place a market order at current price to guarantee fill. Ensures no grid gap.
+Downside: taker fee (0.055%) on every rejection, contradicts maker-only strategy. Chasing a dropping price is the opposite of grid logic — the grid wants to buy low, not chase.
+
+**B. Maker retry at original grid level price**
+Re-place the same order at the same price with `post_only: true`.
+Downside: if price has moved significantly (e.g. \$200 drop), the original price is now far from market and won't fill. The order sits as a stale entry and the grid gap persists until the next rebalance.
+
+**C. Maker retry at current market price (chosen)**
+Place a new `post_only: true` order at the current best price (`current_ask - min_price_increment` for buys, `current_bid + min_price_increment` for sells). One retry only.
 
 ```
 on_entry_post_only_rejected(order):
@@ -121,7 +132,7 @@ on_entry_post_only_rejected(order):
   // If rejected again, log and skip. Grid self-heals via rebalancing.
 ```
 
-Why maker, not taker: the grid logic is built on patience — buy low, wait for bounce. If the ask dropped to \$59,749 (below the original \$59,800 grid level), that's a better entry. Placing a maker order there is exactly what the grid wants. Using taker to chase a dropping price contradicts the strategy.
+Why C is the best option: the grid logic is built on patience — buy low, wait for bounce. If the ask dropped to \$59,749 (below the original \$59,800 grid level), that's a better entry. Placing a maker order there is exactly what the grid wants. Using taker (option A) to chase a dropping price contradicts the strategy. Retrying at the original price (option B) is stale and won't fill.
 
 The TP target stays at the original grid level (not adjusted entry + spacing), preserving grid structure and capturing slightly more profit from the better entry.
 
@@ -129,7 +140,18 @@ If the maker retry also fails, price is moving fast. Skip it — the rebalancing
 
 #### Take-profit orders (close a position at profit target)
 
-Fill immediately as taker.
+Options considered:
+
+**A. Maker retry at original TP price**
+Re-place the same TP order at the same price with `post_only: true`.
+Downside: if price has moved past the TP level, the original price is now below market. A maker sell at \$60,000 when price is at \$60,020 would fill as taker and get rejected again. Even if placed at \$60,021, price could reverse below \$60,000 before fill — the profit disappears and the position could turn into a loss.
+
+**B. Maker retry at current market price**
+Place a new `post_only: true` sell at `current_bid + min_price_increment`.
+Downside: same reversal risk as option A. The profit already exists right now — any delay risks losing it. A maker order sits on the book waiting to fill while the market can move against us. Saving 0.045% in fees is not worth risking the entire \$0.19 profit from the round trip.
+
+**C. Taker market order (chosen)**
+Fill immediately as taker to lock in the existing profit.
 
 ```
 on_tp_post_only_rejected(order):
@@ -137,18 +159,18 @@ on_tp_post_only_rejected(order):
   // Taker fill. Profit is already there — lock it in.
 ```
 
-Why taker, not maker: the profit already exists and the risk is reversal. If the long TP sell at \$60,000 was rejected because price is at \$60,020, placing a maker sell at \$60,021 risks price reversing below \$60,000 before it fills — the profit disappears and the position could turn into a loss.
+Why C is the best option: the profit already exists and the risk is reversal. If the long TP sell at \$60,000 was rejected because price is at \$60,020, placing a maker order (options A or B) risks price reversing below \$60,000 before fill — the profit disappears and the position could turn into a loss. A taker order guarantees the profit is captured immediately.
 
 Fee cost: \$0.027 extra per event (taker \$0.033 vs maker \$0.006 on 0.001 BTC at \$60,000). This scenario is extremely rare — price must move a full \$200 grid spacing in the milliseconds between entry fill detection and TP placement. Expected frequency: 0-1 times per week. Total impact: under \$0.50/month.
 
 #### Summary
 
-| Order type | On rejection | Why |
-|---|---|---|
-| Entry (open position) | Maker retry at `current_price ± 1` | Better entry, patience = grid logic |
-| Take-profit (close position) | Taker market order | Profit exists now, risk of reversal |
+| Order type | On rejection | Options rejected | Why |
+|---|---|---|---|
+| Entry (open position) | C: Maker retry at `current_price ± 1` | A: taker (chases price), B: maker at original (stale) | Better entry, patience = grid logic |
+| Take-profit (close position) | C: Taker market order | A: maker at original (reversal risk), B: maker at current (reversal risk) | Profit exists now, risk of reversal |
 
-Action: update `docs/trading-bot-strategy.md` to add post-only rejection handling to the core grid algorithm section.
+Action: update `docs/trading-bot-strategy.md` to add post-only rejection handling (with option analysis) to the core grid algorithm section. Update `docs/trading-bot-strategy-context.md` to add the reasoning behind the chosen options (why maker for entries, why taker for TPs) and the fee/frequency analysis.
 
 ---
 
@@ -156,7 +178,7 @@ Action: update `docs/trading-bot-strategy.md` to add post-only rejection handlin
 
 ### 6. Volatility-adaptive grid spacing (ATR-based)
 
-Status: `open`
+Status: `not reviewed`
 
 Fixed \$200 spacing works in average conditions. But BTC daily range varies from 1% (\$680) to 10% (\$6,800). During low-volatility periods, \$200 spacing means zero fills for days. During high-volatility periods, \$200 means fills every few minutes with high exposure.
 
@@ -182,7 +204,7 @@ Action: model as a simulation parameter sweep. Compare fixed spacing vs ATR-adju
 
 ### 7. Maximum net exposure limit
 
-Status: `open`
+Status: `not reviewed`
 
 The grid can accumulate positions on one side between rebalance checks. The gradual shift at "1 level beyond" shifts the grid but doesn't close positions. Between 0 and 2 levels beyond, positions accumulate unchecked.
 
@@ -196,7 +218,7 @@ Action: define the net exposure limit and add it to the fast-loop checks.
 
 ### 8. Circuit breaker Level 2 taker cost optimization
 
-Status: `open`
+Status: `not reviewed`
 
 Level 2 says "close all positions -> bot pauses 24h." Closing all positions during high volatility means market/taker orders. With 6 positions:
 
@@ -216,7 +238,7 @@ Action: decide after initial implementation. May be premature optimization at \$
 
 ### 9. Profit-taking / compounding trigger automation
 
-Status: `open`
+Status: `not reviewed`
 
 The scaling guide says to tighten grid as account grows (\$200 -> \$150 -> \$100 spacing) but doesn't define when or how. Is it manual? Automatic?
 
@@ -237,7 +259,7 @@ Action: implement manual notification in v1. Flag auto-adjustment as a v2 featur
 
 ### 10. EMA period is unvalidated
 
-Status: `open`
+Status: `not reviewed`
 
 EMA(50) on 15-min candles = 12.5 hours of lookback. This was chosen qualitatively ("SMA too slow, DEMA too fast, EMA sweet spot"). The Monte Carlo simulation should sweep EMA periods (20, 30, 50, 75, 100) and compare grid profitability across regimes.
 
@@ -249,7 +271,7 @@ Action: flag as simulation parameter. Do not change the default until simulation
 
 ### 11. Hedge lock window (48h) is arbitrary
 
-Status: `open`
+Status: `not reviewed`
 
 The 48-hour hedge lock expiry was set without empirical backing. The context doc acknowledges this as an open question.
 
@@ -295,7 +317,7 @@ Key implication: the hedge lock tradeoff is not about funding cost. The real cos
 
 ### 13. Exchange maintenance window handling
 
-Status: `open`
+Status: `not reviewed`
 
 WhiteBit has scheduled and unscheduled maintenance. During maintenance:
 - WebSocket connections drop (handled by reconnection logic)
@@ -310,7 +332,7 @@ Action: address as part of restart reconciliation design.
 
 ### 14. Orderbook depth awareness at scale
 
-Status: `open`
+Status: `not reviewed`
 
 At 0.001 BTC per level (\$68 per position), the bot is invisible in the orderbook. As the account scales to \$500+ with larger positions, orders become visible to other bots that may front-run or adversarially interact.
 
