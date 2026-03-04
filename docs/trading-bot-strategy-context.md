@@ -9,7 +9,7 @@ Building a BTC/USDT perpetual futures grid trading bot in Go for the WhiteBit ex
 ## Developer Profile
 
 - Senior Backend Golang Engineer
-- Trading with ~$100, goal is to reach $500 without topping up
+- Trading with ~\$100, goal is to reach \$500 without topping up
 - Ready for risks but not for losing everything
 - Prefers maker-only orders (0.01% fee on WhiteBit)
 - Will use Claude Code for implementation
@@ -28,11 +28,11 @@ Normal mode only allows long OR short. Flipping requires closing one and opening
 
 WhiteBit fees: 0.01% maker vs 0.055% taker. That's 5.5x difference. On a grid bot doing 20+ trades/day, this is the difference between profitable and not. All orders must use `post_only: true` so they get rejected rather than filled as taker.
 
-This low maker fee is a genuine competitive edge — it allows tighter grid spacing ($100-200) that would be unprofitable on Binance/Bybit/OKX (0.02% maker). Most YouTube/forum advice about minimum grid spacing assumes higher fees and doesn't apply here.
+This low maker fee is a genuine competitive edge — it allows tighter grid spacing (\$100-200) that would be unprofitable on Binance/Bybit/OKX (0.02% maker). Most YouTube/forum advice about minimum grid spacing assumes higher fees and doesn't apply here.
 
 ### Why 5x Leverage
 
-$100 account needs leverage just to meet minimum order sizes. 5x gives $500 buying power, enough for 3 grid levels each side at ~$60/position. Higher leverage (10x+) increases liquidation risk during crashes. At 5x with BTC at $60,000, liquidation is around $48,000 — huge buffer.
+\$100 account needs leverage just to meet minimum order sizes. 5x gives \$500 buying power, enough for 3 grid levels each side at ~\$60/position. Higher leverage (10x+) increases liquidation risk during crashes. At 5x with BTC at \$60,000, liquidation is around \$48,000 — huge buffer.
 
 ### Why EMA(50) on 15-Minute Candles
 
@@ -44,17 +44,17 @@ $100 account needs leverage just to meet minimum order sizes. 5x gives $500 buyi
 
 ### Why Grid Trading (Not Other Strategies)
 
-For a $100 account on a single exchange:
+For a \$100 account on a single exchange:
 - DCA: not really trading, just accumulation
 - Cross-exchange arbitrage: needs accounts on multiple exchanges, more capital
-- Funding rate arbitrage: returns too small at $100
+- Funding rate arbitrage: returns too small at \$100
 - Market making: needs deep capital
 - Grid trading: works well with small capital, profits from volatility (which BTC has plenty of), simple to implement, pairs well with hedge mode
 
 ### Why Custom Bot Instead of Existing Platforms
 
-At $100 account size:
-- 3Commas/Pionex charge $50+/month — that's 50% of capital annually just for the platform
+At \$100 account size:
+- 3Commas/Pionex charge \$50+/month — that's 50% of capital annually just for the platform
 - No existing bot supports the hedge lock mechanism (freeze loss with opposite position instead of stop-loss)
 - Existing bots often fill as taker despite claiming limit orders
 - No existing bot supports the specific circuit breaker logic (pause 24h, pause 7d, etc.)
@@ -97,7 +97,7 @@ Why not react to every tick: price spikes beyond grid and comes back within seco
 
 ### Grid Spacing Scaling
 
-The constraint at $100 is margin, not fees:
+The constraint at \$100 is margin, not fees:
 
 ```
 $100 account, 5x leverage, $500 buying power
@@ -109,13 +109,13 @@ $300 grid, 3 levels each side = 6 × $60 = $360 → comfortable
 ```
 
 Tighten grid as account grows:
-- $100 account → $200 spacing, 3 levels
-- $200 account → $150 spacing, 4 levels
-- $500 account → $100 spacing, 5 levels
+- \$100 account → \$200 spacing, 3 levels
+- \$200 account → \$150 spacing, 4 levels
+- \$500 account → \$100 spacing, 5 levels
 
-Minimum profitable spacing at 0.01% maker: ~$120 (0.02% round trip fee on ~$60,000 BTC). Anything above this is profitable per fill.
+Minimum profitable spacing at 0.01% maker: ~\$120 (0.02% round trip fee on ~\$60,000 BTC). Anything above this is profitable per fill.
 
-### Why Strategy Won't Scale Linearly Past $10k
+### Why Strategy Won't Scale Linearly Past \$10k
 
 Not a strategy problem — a market microstructure problem:
 1. Order visibility: 0.001 BTC is invisible, 1 BTC is visible to other bots who front-run
@@ -123,15 +123,15 @@ Not a strategy problem — a market microstructure problem:
 3. Fill competition: fewer fills relative to capital at larger sizes
 4. Exchange risk: too much capital on one exchange
 
-Solution at scale: multiple pairs, multiple exchanges, multiple strategies. Not relevant until well past the $500 goal.
+Solution at scale: multiple pairs, multiple exchanges, multiple strategies. Not relevant until well past the \$500 goal.
 
 ### Performance Expectations
 
 Win rate per trade: ~85%
-Net profit per round trip: ~$0.19 (at $100 account, $200 grid)
+Net profit per round trip: ~\$0.19 (at \$100 account, \$200 grid)
 Fills per day: 8-15 average (varies with volatility)
 Monthly return: 20-90% depending on volatility (not compounding)
-Realistic path: $100 → $500 in 8-12 months with compounding
+Realistic path: \$100 → \$500 in 8-12 months with compounding
 
 Bad months will happen. The strategy wins in aggregate across months, not on every trade or every month.
 

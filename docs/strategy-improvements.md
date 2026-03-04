@@ -8,30 +8,52 @@ Status key: `open` = not yet addressed, `accepted` = will implement, `rejected` 
 
 ## Critical Gaps
 
-### 1. Hedge lock must use taker order — strategy doc contradicts context doc
+### 1. Hedge lock must always use taker order
 
-Status: `open`
+Status: `accepted`
 
 The strategy doc says hedge lock opens "an equal short (maker order)." During a crash, a maker order sits on the book while price keeps falling — by the time it fills (if it fills — post_only rejects it if price has already moved past), the loss has grown beyond the intended lock threshold.
 
-The context doc has the correct answer: "The hedge lock uses a TAKER order (market) in emergency — this is the one exception to maker-only." The strategy doc needs to match this.
+The context doc already has the correct answer: "The hedge lock uses a TAKER order (market) in emergency." The strategy doc needs to match this.
 
-The cost is small: one taker fill at 0.055% on 0.001 BTC at $68,000 = $0.037. Compared to the loss it prevents, this is nothing.
+#### Decision: always taker, no "try maker first" path
 
-Action: reconcile the two docs. Hedge lock = taker/market order, explicitly stated as the sole exception to maker-only policy.
+A maker-first-then-fallback approach saves 0.045% per hedge lock but introduces a timing decision (how long to wait?) that can't be answered correctly. During a crash, any delay costs more than the fee savings.
+
+Taker fee at each account scale (one hedge lock covering all positions on one side):
+
+```
+\$100 account  (0.003 BTC hedge):  \$0.11 taker fee
+\$1,000 account (0.025 BTC hedge): \$0.94 taker fee
+\$10,000 account (0.14 BTC hedge): \$5.24 taker fee
+```
+
+Even at \$10,000, the fee is 0.05% of account — negligible vs the -3% loss being locked. Meanwhile, a 2-second delay during a crash costs more than the fee savings:
+
+```
+\$10,000 account, 0.14 BTC position:
+  BTC drops \$50 in 2 seconds (conservative for a crash)
+  Extra loss from delay: 0.14 x \$50 = \$7.00
+  Fee saved by maker:   0.045% x 0.14 x \$68,000 = \$4.28
+  Net: -\$2.72 worse off trying maker first
+```
+
+Safety mechanisms should be simple and fast. One code path, guaranteed fill.
+
+Action: update `docs/trading-bot-strategy.md` to state hedge lock uses taker/market order as the sole exception to maker-only policy. Update `docs/trading-bot-strategy-context.md` to remove ambiguity — the context doc already says taker but should reference the scaling analysis above.
 
 ---
 
 ### 2. Correlated losses across grid levels — per-trade risk understates real exposure
 
-Status: `open`
+Status: `accepted`
 
 Position sizing says "max 1-2% loss per trade." But during a trend, ALL positions on the wrong side lose simultaneously. With 3 shorts open during a pump, the aggregate unrealized loss is 3x a single level.
 
-At $100 account with $200 spacing this is manageable (~$0.60 aggregate). But at the $500 scaling tier ($100 spacing, 5 levels), aggregate exposure on one side is:
+At \$100 account with \$200 spacing this is manageable (~\$0.60 aggregate). But at the \$500 scaling tier (\$100 spacing, 5 levels), aggregate exposure on one side is:
 
 ```
-5 levels x 0.002 BTC x $500 move = $5.00 = 1% of account
+5 levels x 0.002 BTC x \$500 move = \$5.00 = 1% of account
 ```
 
 The scaling guide should include a correlated worst-case column showing aggregate exposure, not just per-trade risk. This informs circuit breaker thresholds too — Level 1 (-3% unrealized) needs to account for multi-level correlation.
@@ -99,18 +121,18 @@ Action: define retry policy in the strategy doc.
 
 Status: `open`
 
-Fixed $200 spacing works in average conditions. But BTC daily range varies from 1% ($680) to 10% ($6,800). During low-volatility periods, $200 spacing means zero fills for days. During high-volatility periods, $200 means fills every few minutes with high exposure.
+Fixed \$200 spacing works in average conditions. But BTC daily range varies from 1% (\$680) to 10% (\$6,800). During low-volatility periods, \$200 spacing means zero fills for days. During high-volatility periods, \$200 means fills every few minutes with high exposure.
 
 Improvement: use ATR (Average True Range) on the same 15-min candles to dynamically adjust spacing:
 
 ```
-base_spacing = $200
+base_spacing = \$200
 atr_14 = 14-period ATR on 15-min candles
 volatility_ratio = atr_14 / historical_avg_atr
 adjusted_spacing = base_spacing x volatility_ratio
 
 Clamp to [min_profitable_spacing, max_spacing]
-where min_profitable_spacing = $120 (0.02% round-trip fee threshold)
+where min_profitable_spacing = \$120 (0.02% round-trip fee threshold)
 ```
 
 This makes the grid breathe with the market — tighter during quiet periods (more fills), wider during volatile periods (less exposure).
@@ -142,16 +164,16 @@ Status: `open`
 Level 2 says "close all positions -> bot pauses 24h." Closing all positions during high volatility means market/taker orders. With 6 positions:
 
 ```
-6 x 0.001 BTC x $68,000 x 0.055% = ~$2.24 in taker fees
+6 x 0.001 BTC x \$68,000 x 0.055% = ~\$2.24 in taker fees
 ```
 
-Not huge at $100 account, but it adds to the loss that already triggered the circuit breaker.
+Not huge at \$100 account, but it adds to the loss that already triggered the circuit breaker.
 
 Alternative: hedge-lock everything (one taker order for the net exposure) and then unwind via maker orders over the next 15-60 minutes. This preserves the pause behavior while minimizing taker cost.
 
-Tradeoff: more complex, takes longer to fully close. But saves $1-2 in fees during an already-losing moment. Evaluate whether the added complexity is worth it at $100 account size.
+Tradeoff: more complex, takes longer to fully close. But saves \$1-2 in fees during an already-losing moment. Evaluate whether the added complexity is worth it at \$100 account size.
 
-Action: decide after initial implementation. May be premature optimization at $100.
+Action: decide after initial implementation. May be premature optimization at \$100.
 
 ---
 
@@ -159,9 +181,9 @@ Action: decide after initial implementation. May be premature optimization at $1
 
 Status: `open`
 
-The scaling guide says to tighten grid as account grows ($200 -> $150 -> $100 spacing) but doesn't define when or how. Is it manual? Automatic?
+The scaling guide says to tighten grid as account grows (\$200 -> \$150 -> \$100 spacing) but doesn't define when or how. Is it manual? Automatic?
 
-The bot should have a periodic check (daily or weekly) that compares current account balance against scaling thresholds and notifies or auto-adjusts grid parameters. Without this, the bot runs at $200 spacing long after the account has grown past the $200 threshold.
+The bot should have a periodic check (daily or weekly) that compares current account balance against scaling thresholds and notifies or auto-adjusts grid parameters. Without this, the bot runs at \$200 spacing long after the account has grown past the \$200 threshold.
 
 Options:
 - **Manual:** bot sends Telegram notification when account crosses a threshold, human adjusts config
@@ -222,11 +244,11 @@ Negative rates:   frequent (shorts pay longs, partially cancel over time)
 
 Recalculated impact for hedge lock (48h = 6 funding periods):
 ```
-Worst case: 6 x 0.008% x 0.001 BTC x $68,000 = $0.033 per position
-With 6 positions: $0.20 total over 48 hours
+Worst case: 6 x 0.008% x 0.001 BTC x \$68,000 = \$0.033 per position
+With 6 positions: \$0.20 total over 48 hours
 ```
 
-This is negligible — roughly equal to the profit from a single grid fill ($0.19). Funding rates are NOT a meaningful cost factor for this strategy on WhiteBit.
+This is negligible — roughly equal to the profit from a single grid fill (\$0.19). Funding rates are NOT a meaningful cost factor for this strategy on WhiteBit.
 
 Key implication: the hedge lock tradeoff is not about funding cost. The real cost of hedge lock is opportunity cost — margin is tied up in locked positions and can't be used for grid trading. The 48h window decision should be driven by recovery probability, not funding fees.
 
@@ -253,8 +275,8 @@ Action: address as part of restart reconciliation design.
 
 Status: `open`
 
-At 0.001 BTC per level ($68 per position), the bot is invisible in the orderbook. As the account scales to $500+ with larger positions, orders become visible to other bots that may front-run or adversarially interact.
+At 0.001 BTC per level (\$68 per position), the bot is invisible in the orderbook. As the account scales to \$500+ with larger positions, orders become visible to other bots that may front-run or adversarially interact.
 
-Not relevant at $100 but should be noted in the scaling guide as a consideration at $2,000+.
+Not relevant at \$100 but should be noted in the scaling guide as a consideration at \$2,000+.
 
 Action: add a note to the scaling guide. No implementation needed for v1.

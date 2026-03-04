@@ -19,9 +19,9 @@ A hedged grid trading bot for BTC/USDT perpetual futures on WhiteBit exchange, w
 
 | Parameter | Starting Value | Notes |
 |---|---|---|
-| Account size | $100 | Only keep trading capital on exchange |
-| Leverage | 5x | Buying power: $500 |
-| Grid spacing | $200 | Tighten as account grows |
+| Account size | \$100 | Only keep trading capital on exchange |
+| Leverage | 5x | Buying power: \$500 |
+| Grid spacing | \$200 | Tighten as account grows |
 | Grid levels | 3 per side (6 total) | Increase as account grows |
 | Position size | ~0.001 BTC per level | Adjust to stay within margin |
 
