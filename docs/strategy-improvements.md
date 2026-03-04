@@ -100,18 +100,55 @@ Action: define the explicit exit rule with a concrete threshold. This is also a 
 
 ### 5. Post-only rejection retry logic is missing
 
-Status: `open`
+Status: `accepted`
 
-When a post_only order gets rejected (price moved, would fill as taker), the grid has a gap. The strategy doesn't specify what happens next.
+When a post_only order gets rejected (price moved past the order level, would fill as taker), the grid has a gap. The strategy doesn't specify what happens next.
 
-Options:
-- Retry at same price after 1 second (price might come back)
-- Adjust price by 1 tick in the maker direction (guaranteed placement, slightly worse entry)
-- Skip and wait for next rebalance cycle
+Handling differs by order type because the risk profile is opposite:
 
-Recommended: retry once at same price after 1 second, then adjust by 1 tick if still rejected. Log and move on — one missing grid level is not worth burning API rate limit on retries.
+#### Entry orders (grid buy/sell to open a position)
 
-Action: define retry policy in the strategy doc.
+Retry once as maker at current market price.
+
+```
+on_entry_post_only_rejected(order):
+  if order.side == BUY:
+    new_price = current_ask - min_price_increment
+  if order.side == SELL:
+    new_price = current_bid + min_price_increment
+
+  place_order(new_price, post_only=true, grid_level=order.original_grid_level)
+  // If rejected again, log and skip. Grid self-heals via rebalancing.
+```
+
+Why maker, not taker: the grid logic is built on patience — buy low, wait for bounce. If the ask dropped to \$59,749 (below the original \$59,800 grid level), that's a better entry. Placing a maker order there is exactly what the grid wants. Using taker to chase a dropping price contradicts the strategy.
+
+The TP target stays at the original grid level (not adjusted entry + spacing), preserving grid structure and capturing slightly more profit from the better entry.
+
+If the maker retry also fails, price is moving fast. Skip it — the rebalancing logic handles it on the next 15-min candle or emergency rebalance.
+
+#### Take-profit orders (close a position at profit target)
+
+Fill immediately as taker.
+
+```
+on_tp_post_only_rejected(order):
+  place_market_order(order.side, order.amount)
+  // Taker fill. Profit is already there — lock it in.
+```
+
+Why taker, not maker: the profit already exists and the risk is reversal. If the long TP sell at \$60,000 was rejected because price is at \$60,020, placing a maker sell at \$60,021 risks price reversing below \$60,000 before it fills — the profit disappears and the position could turn into a loss.
+
+Fee cost: \$0.027 extra per event (taker \$0.033 vs maker \$0.006 on 0.001 BTC at \$60,000). This scenario is extremely rare — price must move a full \$200 grid spacing in the milliseconds between entry fill detection and TP placement. Expected frequency: 0-1 times per week. Total impact: under \$0.50/month.
+
+#### Summary
+
+| Order type | On rejection | Why |
+|---|---|---|
+| Entry (open position) | Maker retry at `current_price ± 1` | Better entry, patience = grid logic |
+| Take-profit (close position) | Taker market order | Profit exists now, risk of reversal |
+
+Action: update `docs/trading-bot-strategy.md` to add post-only rejection handling to the core grid algorithm section.
 
 ---
 
