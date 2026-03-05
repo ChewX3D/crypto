@@ -187,6 +187,27 @@ Level 2: Daily PnL < -5% → close all, pause 24h
 Level 3: Weekly drawdown > 12% → pause 7 days, Telegram alert
 ```
 
+## Backtesting Approach
+
+### Data Source
+
+WhiteBit provides kline (candle) data down to 1-second resolution via both REST and WebSocket APIs. Available intervals: 1s, 2s, 3s, 4s, 5s, 6s, 10s, 12s, 15s, 20s, 30s, 1m, 2m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d, 2d, 3d, 1w, 1M.
+
+At 1-second resolution, BTC typically moves \$0.10-\$5.00 per candle. With \$200 grid spacing, price almost never crosses a grid level more than once within a single 1-second candle. This makes 1s candles accurate enough for grid bot backtesting without needing tick-level trade data.
+
+Data volume: one day = 86,400 candles, one month ≈ 2.6M, one year ≈ 31.5M. At ~100 bytes per candle struct, one year ≈ 3 GB in memory — manageable in Go.
+
+### Pessimistic Candle Assumptions
+
+Even with 1-second candles, apply pessimistic assumptions to avoid overfitting to historical data:
+
+- **One fill per level per candle:** if a candle's high/low range crosses a grid level, count it as exactly one fill, never multiple. In reality price might briefly touch a level and reverse before the order could fill.
+- **Worst-case fill ordering:** when a candle crosses multiple grid levels, assume the fill sequence that produces the least profit. For example, if a candle touches both a long entry and its take-profit, assume only the entry filled (not the round trip).
+- **No partial fills:** treat every fill as either fully executed or not executed at all. Do not assume partial fills that would inflate fill counts.
+- **Fees on every fill:** always deduct the full maker fee (0.01%) on every fill, even though some real fills might benefit from fee rebates or promotions.
+
+If the strategy is profitable under these pessimistic rules, it will be profitable in live trading. If it's only profitable under optimistic assumptions (counting multiple fills per candle, assuming best-case ordering), the real-world performance will disappoint.
+
 ## Open Questions for Implementation
 
 - What are WhiteBit's exact minimum order sizes for BTC/USDT futures?
