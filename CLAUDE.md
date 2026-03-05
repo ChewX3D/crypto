@@ -13,6 +13,14 @@ Principles:
 - optimize for sustainability, not heroics
 - enforce DRY: avoid duplicated logic, validation rules, and output formatting paths
 
+## Communication Rules
+
+- every statement must be self-contained and unambiguous — a reader should understand the exact meaning without guessing
+- do not use vague shorthand, slogans, or phrases that could be interpreted multiple ways (e.g. "dead bot = zero fills" is unclear; "the bot only earns while running — every hour offline means no grid orders on the exchange and no profit" is clear)
+- when listing factors, causes, or reasons, explain the mechanism, not just the label
+- do not use filler or motivational statements that carry no concrete information
+- if a concept requires context to understand, provide that context inline
+
 ## Roles
 
 Use these roles even on a one-person team (one person may hold multiple roles):
