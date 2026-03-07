@@ -4,12 +4,12 @@ This document captures all decisions, reasoning, and technical details from the 
 
 ## Project Summary
 
-Building a BTC/USDT perpetual futures grid trading bot in Go for the WhiteBit exchange. The bot uses hedge mode, a trend filter, and multi-layer risk management. The full strategy is documented in `STRATEGY.md`.
+Building a BTC/USDT perpetual futures grid trading bot in Go for the WhiteBit exchange. The bot uses hedge mode, a trend filter, and multi-layer risk management. The full strategy is documented in `trading-bot-strategy.md`.
 
 ## Developer Profile
 
 - Senior Backend Golang Engineer
-- Trading with ~\$100, goal is to reach \$500 without topping up
+- Trading with \$500 starting capital
 - Ready for risks but not for losing everything
 - Prefers maker-only orders (0.01% fee on WhiteBit)
 - Will use Claude Code for implementation
@@ -32,7 +32,16 @@ This low maker fee is a genuine competitive edge — it allows tighter grid spac
 
 ### Why 5x Leverage
 
-\$100 account needs leverage just to meet minimum order sizes. 5x gives \$500 buying power, enough for 3 grid levels each side at ~\$60/position. Higher leverage (10x+) increases liquidation risk during crashes. At 5x with BTC at \$60,000, liquidation is around \$48,000 — huge buffer.
+5x gives \$2,500 buying power on a \$500 account. This supports 10 grid positions (5 per side) at 0.002 BTC each, plus margin buffer for trailing positions during directional moves. Higher leverage (10x+) increases liquidation risk during crashes. At 5x with BTC at \$68,000, liquidation price is far enough to survive temporary drawdowns.
+
+### Why \$500 Minimum Account
+
+At \$100, the trailing grid approach does not work. When price makes a \$2,000 directional move (common for BTC, happens several times per week), the bot needs to hold 10+ positions simultaneously while trailing. At \$100 with 5x leverage, this exceeds available margin and risks liquidation.
+
+At \$500 with 5x leverage (\$2,500 buying power):
+- Initial grid (10 positions): \$272 margin (54% of account)
+- Trailing buffer: \$228 supports ~8 additional positions
+- Enough headroom to absorb \$3,000+ directional moves without margin pressure
 
 ### Why EMA(50) on 15-Minute Candles
 
@@ -44,24 +53,24 @@ This low maker fee is a genuine competitive edge — it allows tighter grid spac
 
 ### Why Grid Trading (Not Other Strategies)
 
-For a \$100 account on a single exchange:
+For a \$500 account on a single exchange:
 - DCA: not really trading, just accumulation
 - Cross-exchange arbitrage: needs accounts on multiple exchanges, more capital
-- Funding rate arbitrage: returns too small at \$100
+- Funding rate arbitrage: returns too small at \$500
 - Market making: needs deep capital
-- Grid trading: works well with small capital, profits from volatility (which BTC has plenty of), simple to implement, pairs well with hedge mode
+- Grid trading: works well with moderate capital, profits from volatility (which BTC has plenty of), simple to implement, pairs well with hedge mode
 
 ### Why Custom Bot Instead of Existing Platforms
 
-At \$100 account size:
-- 3Commas/Pionex charge \$50+/month — that's 50% of capital annually just for the platform
+- 3Commas/Pionex charge \$50+/month — significant overhead on \$500 capital
 - No existing bot supports the hedge lock mechanism (freeze loss with opposite position instead of stop-loss)
 - Existing bots often fill as taker despite claiming limit orders
 - No existing bot supports the specific circuit breaker logic (pause 24h, pause 7d, etc.)
 - No dynamic trend filter adjusting grid bias
+- No trailing grid that keeps old positions alive instead of closing them
 - Developer is a senior Go engineer — building the bot is a weekend project
 
-## Strategy Details Not in STRATEGY.md
+## Strategy Details Not in Strategy Doc
 
 ### Hedge Lock vs Stop-Loss (Full Reasoning)
 
@@ -78,60 +87,70 @@ Hedge lock wins specifically for BTC because BTC almost always bounces to some d
 
 The hedge lock uses a TAKER order (market) in emergency — this is the one exception to maker-only. Acceptable because it happens rarely and the cost is far less than the loss it prevents.
 
-### Rebalancing Logic (Full Detail)
+### Trailing Grid Logic (Full Detail)
 
-Grid becomes "dead" when price trends away — all orders on one side are stale. The bot handles this with two processing speeds:
+Grid becomes "dead" when price trends away — all orders on one side are stale. Instead of closing positions and rebuilding (which realizes losses), the bot trails the grid:
 
-**Fast loop (every WebSocket tick):**
+**Trailing mechanism:**
+- When price exits the grid range, cancel the farthest order from current price (stale, won't fill)
+- Use freed margin to place a new order near current price
+- Keep all existing positions and their TPs alive
+- Repeat one level at a time as price keeps moving
+
+**Two processing speeds:**
+
+Fast loop (every WebSocket tick):
 - Monitor order fills → place take-profits
 - Monitor circuit breaker thresholds
-- Detect flash crash (price gaps 3+ grid levels) → emergency rebalance immediately
+- Detect extreme gaps (price 5+ grid steps beyond range) → emergency trail immediately
 
-**Slow loop (every 15-minute candle close):**
+Slow loop (every 15-minute candle close):
 - Update EMA
-- Check if price is outside grid
-- If 1 level beyond: shift grid by 1 level (gradual, no position closes)
-- If 2+ levels beyond: full rebalance (cancel stale orders, hedge lock or close losing positions, place new grid)
+- Check if price is outside grid range
+- If outside: trail one step (cancel farthest stale, place new near price)
 
-Why not react to every tick: price spikes beyond grid and comes back within seconds are common. Rebalancing on every tick would cause constant unnecessary order cancellations. Tying to 15-min candles naturally filters noise.
+**Why trailing instead of full rebalance:** BTC frequently bounces after directional moves. Trailing keeps old positions alive so their TPs can fill on the bounce, recovering without realized losses. Full rebalance closes positions at the worst moment and misses the recovery.
 
-### Grid Spacing Scaling
+**The tradeoff:** if price never bounces, trailing positions sit as unrealized losses consuming margin. Circuit breakers (-3% unrealized, -5% daily) are the safety net.
 
-The constraint at \$100 is margin, not fees:
+Why not react to every tick: price spikes beyond grid and comes back within seconds are common. Trailing on every tick would cause constant unnecessary order cancellations. Tying to 15-min candles naturally filters noise.
+
+### Grid Step and Levels
 
 ```
-$100 account, 5x leverage, $500 buying power
-BTC at $60,000, position 0.001 BTC = $60 per position
+$500 account, 5x leverage, $2,500 buying power
+BTC at $68,000, position 0.002 BTC = $136 notional per position
+Margin per position: $136 / 5 = $27.20
 
-$100 grid, 5 levels each side = 10 × $60 = $600 → can't afford
-$200 grid, 3 levels each side = 6 × $60 = $360 → fits
-$300 grid, 3 levels each side = 6 × $60 = $360 → comfortable
+$200 step, 5 levels per side = 10 × $27.20 = $272 margin → fits (54%)
+$150 step, 7 levels per side = 14 × $27.20 = $381 margin → fits but less trailing room
+$100 step, 10 levels per side = 20 × $27.20 = $544 margin → exceeds account
 ```
 
-Tighten grid as account grows:
-- \$100 account → \$200 spacing, 3 levels
-- \$200 account → \$150 spacing, 4 levels
-- \$500 account → \$100 spacing, 5 levels
+Scaling as account grows:
+- \$500 account → \$200 step, 5 levels per side, 0.002 BTC
+- \$1,000 account → \$150 step, 7 levels per side, 0.002 BTC
+- \$2,000 account → \$100 step, 10 levels per side, 0.003 BTC
 
-Minimum profitable spacing at 0.01% maker: ~\$120 (0.02% round trip fee on ~\$60,000 BTC). Anything above this is profitable per fill.
+Minimum profitable step at 0.01% maker: ~\$120 (0.02% round trip fee on ~\$68,000 BTC). Anything above this is profitable per fill.
 
 ### Why Strategy Won't Scale Linearly Past \$10k
 
 Not a strategy problem — a market microstructure problem:
-1. Order visibility: 0.001 BTC is invisible, 1 BTC is visible to other bots who front-run
+1. Order visibility: 0.002 BTC is invisible, 1 BTC is visible to other bots who front-run
 2. Orderbook depth: on WhiteBit, your large orders become a significant part of the book
 3. Fill competition: fewer fills relative to capital at larger sizes
 4. Exchange risk: too much capital on one exchange
 
-Solution at scale: multiple pairs, multiple exchanges, multiple strategies. Not relevant until well past the \$500 goal.
+Solution at scale: multiple pairs, multiple exchanges, multiple strategies. Not relevant until well past initial goals.
 
 ### Performance Expectations
 
-Win rate per trade: ~85%
-Net profit per round trip: ~\$0.19 (at \$100 account, \$200 grid)
-Fills per day: 8-15 average (varies with volatility)
-Monthly return: 20-90% depending on volatility (not compounding)
-Realistic path: \$100 → \$500 in 8-12 months with compounding
+Win rate per round trip: ~85%
+Net profit per round trip: ~\$0.37 (at \$500 account, 0.002 BTC, \$200 step)
+Round trips per day: 6-12 average (varies with volatility)
+Monthly return: 9-27% depending on volatility (not compounding)
+Realistic path: \$500 → \$2,000 in 12 months with compounding
 
 Bad months will happen. The strategy wins in aggregate across months, not on every trade or every month.
 
@@ -164,7 +183,7 @@ Each order needs metadata to distinguish its role:
 
 ```
 GridOrder:       initial grid placement (buy below / sell above)
-TakeProfitOrder: placed when grid order fills (sells the position at +1 spacing)
+TakeProfitOrder: placed when grid order fills (sells the position at +1 step)
 HedgeLockOrder:  emergency opposite position to freeze loss
 StopLossOrder:   exchange-side safety net (wider than bot's threshold)
 ```
@@ -193,7 +212,7 @@ Level 3: Weekly drawdown > 12% → pause 7 days, Telegram alert
 
 WhiteBit provides kline (candle) data down to 1-second resolution via both REST and WebSocket APIs. Available intervals: 1s, 2s, 3s, 4s, 5s, 6s, 10s, 12s, 15s, 20s, 30s, 1m, 2m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d, 2d, 3d, 1w, 1M.
 
-At 1-second resolution, BTC typically moves \$0.10-\$5.00 per candle. With \$200 grid spacing, price almost never crosses a grid level more than once within a single 1-second candle. This makes 1s candles accurate enough for grid bot backtesting without needing tick-level trade data.
+At 1-second resolution, BTC typically moves \$0.10-\$5.00 per candle. With \$200 grid step, price almost never crosses a grid level more than once within a single 1-second candle. This makes 1s candles accurate enough for grid bot backtesting without needing tick-level trade data.
 
 Data volume: one day = 86,400 candles, one month ≈ 2.6M, one year ≈ 31.5M. At ~100 bytes per candle struct, one year ≈ 3 GB in memory — manageable in Go.
 
@@ -223,7 +242,7 @@ If the strategy is profitable under these pessimistic rules, it will be profitab
 2. Core grid loop (place orders, detect fills, place take-profits, restore grid)
 3. State persistence (survive restarts)
 4. EMA trend filter
-5. Rebalancing logic (two-speed processing)
+5. Trailing grid logic (two-speed processing)
 6. Circuit breakers
 7. Hedge lock mechanism
 8. Exchange-side stop-loss placement

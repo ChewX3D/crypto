@@ -23,9 +23,9 @@ A maker-first-then-fallback approach saves 0.045% per hedge lock but introduces 
 Taker fee at each account scale (one hedge lock covering all positions on one side):
 
 ```
-\$100 account  (0.003 BTC hedge):  \$0.11 taker fee
-\$1,000 account (0.025 BTC hedge): \$0.94 taker fee
-\$10,000 account (0.14 BTC hedge): \$5.24 taker fee
+\$500 account   (0.010 BTC hedge):  \$0.37 taker fee
+\$1,000 account (0.025 BTC hedge):  \$0.94 taker fee
+\$10,000 account (0.14 BTC hedge):  \$5.24 taker fee
 ```
 
 Even at \$10,000, the fee is 0.05% of account — negligible vs the -3% loss being locked. Meanwhile, a 2-second delay during a crash costs more than the fee savings:
@@ -48,12 +48,12 @@ Action: update `docs/trading-bot-strategy.md` to state hedge lock uses taker/mar
 
 Status: `accepted`
 
-Position sizing says "max 1-2% loss per trade." But during a trend, ALL positions on the wrong side lose simultaneously. With 3 shorts open during a pump, the aggregate unrealized loss is 3x a single level.
+Position sizing says "max 1-2% loss per trade." But during a trend, ALL positions on the wrong side lose simultaneously. With 5 shorts open during a pump, the aggregate unrealized loss is 5x a single level.
 
-At \$100 account with \$200 spacing this is manageable (~\$0.60 aggregate). But at the \$500 scaling tier (\$100 spacing, 5 levels), aggregate exposure on one side is:
+At \$500 account with \$200 step and 5 levels per side, aggregate exposure on one side:
 
 ```
-5 levels x 0.002 BTC x \$500 move = \$5.00 = 1% of account
+5 levels x 0.002 BTC x \$1,000 move = \$10.00 = 2% of account
 ```
 
 The scaling guide should include a correlated worst-case column showing aggregate exposure, not just per-trade risk. This informs circuit breaker thresholds too — Level 1 (-3% unrealized) needs to account for multi-level correlation.
@@ -161,7 +161,7 @@ on_tp_post_only_rejected(order):
 
 Why C is the best option: the profit already exists and the risk is reversal. If the long TP sell at \$60,000 was rejected because price is at \$60,020, placing a maker order (options A or B) risks price reversing below \$60,000 before fill — the profit disappears and the position could turn into a loss. A taker order guarantees the profit is captured immediately.
 
-Fee cost: \$0.027 extra per event (taker \$0.033 vs maker \$0.006 on 0.001 BTC at \$60,000). This scenario is extremely rare — price must move a full \$200 grid spacing in the milliseconds between entry fill detection and TP placement. Expected frequency: 0-1 times per week. Total impact: under \$0.50/month.
+Fee cost: \$0.054 extra per event (taker \$0.075 vs maker \$0.014 on 0.002 BTC at \$68,000). This scenario is extremely rare — price must move a full \$200 grid step in the milliseconds between entry fill detection and TP placement. Expected frequency: 0-1 times per week. Total impact: under \$1.00/month.
 
 #### Summary
 
@@ -220,19 +220,19 @@ Action: define the net exposure limit and add it to the fast-loop checks.
 
 Status: `not reviewed`
 
-Level 2 says "close all positions -> bot pauses 24h." Closing all positions during high volatility means market/taker orders. With 6 positions:
+Level 2 says "close all positions -> bot pauses 24h." Closing all positions during high volatility means market/taker orders. With 10 positions:
 
 ```
-6 x 0.001 BTC x \$68,000 x 0.055% = ~\$2.24 in taker fees
+10 x 0.002 BTC x \$68,000 x 0.055% = ~\$7.48 in taker fees
 ```
 
-Not huge at \$100 account, but it adds to the loss that already triggered the circuit breaker.
+At \$500 account that's 1.5% of capital in fees alone, on top of the loss that already triggered the circuit breaker.
 
 Alternative: hedge-lock everything (one taker order for the net exposure) and then unwind via maker orders over the next 15-60 minutes. This preserves the pause behavior while minimizing taker cost.
 
-Tradeoff: more complex, takes longer to fully close. But saves \$1-2 in fees during an already-losing moment. Evaluate whether the added complexity is worth it at \$100 account size.
+Tradeoff: more complex, takes longer to fully close. But saves \$5-6 in fees during an already-losing moment. At \$500 account, 1.5% in avoidable fees is significant.
 
-Action: decide after initial implementation. May be premature optimization at \$100.
+Action: evaluate during implementation. Hedge-then-unwind approach may be worth the complexity at \$500.
 
 ---
 
@@ -303,11 +303,11 @@ Negative rates:   frequent (shorts pay longs, partially cancel over time)
 
 Recalculated impact for hedge lock (48h = 6 funding periods):
 ```
-Worst case: 6 x 0.008% x 0.001 BTC x \$68,000 = \$0.033 per position
-With 6 positions: \$0.20 total over 48 hours
+Worst case: 6 x 0.008% x 0.002 BTC x \$68,000 = \$0.065 per position
+With 10 positions: \$0.65 total over 48 hours
 ```
 
-This is negligible — roughly equal to the profit from a single grid fill (\$0.19). Funding rates are NOT a meaningful cost factor for this strategy on WhiteBit.
+This is negligible — less than the profit from two grid round trips (\$0.37 each). Funding rates are NOT a meaningful cost factor for this strategy on WhiteBit.
 
 Key implication: the hedge lock tradeoff is not about funding cost. The real cost of hedge lock is opportunity cost — margin is tied up in locked positions and can't be used for grid trading. The 48h window decision should be driven by recovery probability, not funding fees.
 
@@ -334,8 +334,8 @@ Action: address as part of restart reconciliation design.
 
 Status: `not reviewed`
 
-At 0.001 BTC per level (\$68 per position), the bot is invisible in the orderbook. As the account scales to \$500+ with larger positions, orders become visible to other bots that may front-run or adversarially interact.
+At 0.002 BTC per level (\$136 per position), the bot is nearly invisible in the orderbook. As the account scales to \$2,000+ with larger positions (0.003+ BTC), orders become visible to other bots that may front-run or adversarially interact.
 
-Not relevant at \$100 but should be noted in the scaling guide as a consideration at \$2,000+.
+Not relevant at \$500 but should be noted in the scaling guide as a consideration at \$2,000+.
 
 Action: add a note to the scaling guide. No implementation needed for v1.
