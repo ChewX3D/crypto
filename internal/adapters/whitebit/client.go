@@ -73,6 +73,13 @@ func (source *MonotonicUnixMilliNonceSource) Next() int64 {
 	return now
 }
 
+// PrivateClient defines the contract for signed private WhiteBIT API operations.
+type PrivateClient interface {
+	GetCollateralAccountHedgeMode(ctx context.Context, credential domainauth.Credential) (CollateralAccountHedgeModeResponse, error)
+	PlaceCollateralLimitOrder(ctx context.Context, credential domainauth.Credential, request CollateralLimitOrderRequest) (json.RawMessage, error)
+	PlaceCollateralBulkLimitOrder(ctx context.Context, credential domainauth.Credential, request CollateralBulkLimitOrderRequest) (json.RawMessage, error)
+}
+
 // Client executes signed private WhiteBIT HTTP API requests.
 type Client struct {
 	baseURL     string

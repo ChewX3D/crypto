@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	collateralAccountHedgeModePath = "/api/v4/collateral-account/hedge-mode"
-	collateralLimitOrderPath       = "/api/v4/order/collateral/limit"
-	collateralBulkLimitOrderPath   = "/api/v4/order/collateral/bulk"
+	URLPathCollateralAccountHedgeMode = "/api/v4/collateral-account/hedge-mode"
+	URLPathCollateralLimitOrder       = "/api/v4/order/collateral/limit"
+	URLPathCollateralLimitOrderBulk   = "/api/v4/order/collateral/bulk"
 )
 
 var (
@@ -150,11 +150,11 @@ func (client *Client) GetCollateralAccountHedgeMode(
 	credential domainauth.Credential,
 ) (CollateralAccountHedgeModeResponse, error) {
 	payload := collateralHedgeModePayload{
-		privateEnvelope: client.nextPrivateEnvelope(collateralAccountHedgeModePath),
+		privateEnvelope: client.nextPrivateEnvelope(URLPathCollateralAccountHedgeMode),
 	}
 
 	var response CollateralAccountHedgeModeResponse
-	if err := client.doPrivateRequest(ctx, credential, collateralAccountHedgeModePath, payload, &response); err != nil {
+	if err := client.doPrivateRequest(ctx, credential, URLPathCollateralAccountHedgeMode, payload, &response); err != nil {
 		return CollateralAccountHedgeModeResponse{}, err
 	}
 
@@ -172,12 +172,12 @@ func (client *Client) PlaceCollateralLimitOrder(
 	}
 
 	payload := collateralLimitOrderPayload{
-		privateEnvelope:             client.nextPrivateEnvelope(collateralLimitOrderPath),
+		privateEnvelope:             client.nextPrivateEnvelope(URLPathCollateralLimitOrder),
 		CollateralLimitOrderRequest: request,
 	}
 
 	var response json.RawMessage
-	if err := client.doPrivateRequest(ctx, credential, collateralLimitOrderPath, payload, &response); err != nil {
+	if err := client.doPrivateRequest(ctx, credential, URLPathCollateralLimitOrder, payload, &response); err != nil {
 		return nil, err
 	}
 
@@ -195,13 +195,13 @@ func (client *Client) PlaceCollateralBulkLimitOrder(
 	}
 
 	payload := collateralBulkLimitOrderPayload{
-		privateEnvelope: client.nextPrivateEnvelope(collateralBulkLimitOrderPath),
+		privateEnvelope: client.nextPrivateEnvelope(URLPathCollateralLimitOrderBulk),
 		Orders:          request.Orders,
 		StopOnFail:      request.StopOnFail,
 	}
 
 	var response json.RawMessage
-	if err := client.doPrivateRequest(ctx, credential, collateralBulkLimitOrderPath, payload, &response); err != nil {
+	if err := client.doPrivateRequest(ctx, credential, URLPathCollateralLimitOrderBulk, payload, &response); err != nil {
 		return nil, err
 	}
 

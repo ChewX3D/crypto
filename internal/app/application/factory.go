@@ -7,7 +7,8 @@ import (
 	"github.com/ChewX3D/crypto/internal/adapters/clock"
 	"github.com/ChewX3D/crypto/internal/adapters/configstore"
 	"github.com/ChewX3D/crypto/internal/adapters/secretstore"
-	"github.com/ChewX3D/crypto/internal/adapters/whitebit"
+	"github.com/ChewX3D/crypto/internal/adapters/whitebit/adapters/collaterlal"
+	whitebit_credentials_adapters "github.com/ChewX3D/crypto/internal/adapters/whitebit/adapters/credentials"
 	authservice "github.com/ChewX3D/crypto/internal/app/services/auth"
 	collateralservice "github.com/ChewX3D/crypto/internal/app/services/collateral"
 )
@@ -90,15 +91,15 @@ func NewDefault() (*Application, error) {
 	}
 
 	credentialStore := secretstore.NewOSKeychainStore()
-	credentialVerifier := whitebit.NewDefaultCredentialVerifierAdapter()
-	collateralOrderExecutor := whitebit.NewDefaultCollateralOrderExecutorAdapter()
-	clock := clock.Real{}
+	credentialVerifier := whitebit_credentials_adapters.NewDefaultCredentialVerifierAdapter()
+	collateralOrderExecutor := whitebit_collateral_adapters.NewDefaultCollateralOrderExecutorAdapter()
+	realClock := clock.Real{}
 
 	return NewWithServices(
-		authservice.NewLoginService(credentialStore, sessionStore, clock, credentialVerifier),
+		authservice.NewLoginService(credentialStore, sessionStore, realClock, credentialVerifier),
 		authservice.NewLogoutService(credentialStore, sessionStore),
 		authservice.NewStatusService(sessionStore),
-		collateralservice.NewPlaceOrderService(credentialStore, sessionStore, collateralOrderExecutor, clock),
+		collateralservice.NewPlaceOrderService(credentialStore, sessionStore, collateralOrderExecutor, realClock),
 	), nil
 }
 

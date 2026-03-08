@@ -1,21 +1,22 @@
-package whitebit
+package whitebit_adapters_common
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/ChewX3D/crypto/internal/adapters/whitebit"
 	"github.com/ChewX3D/crypto/internal/app/ports"
 )
 
-// buildAPIError converts a WhiteBIT transport error into a ports.APIError with a user-facing
+// BuildAPIError converts a WhiteBIT transport error into a ports.APIError with a user-facing
 // message and full details. endpoint is the API path that failed; operation is a short
 // description used in the message (e.g. "credential verification", "order placement").
-func buildAPIError(err error, endpoint, operation string) *ports.APIError {
+func BuildAPIError(err error, endpoint, operation string) *ports.APIError {
 	detail := extractDetail(err)
 
 	switch {
-	case errors.Is(err, ErrForbidden) || (errors.Is(err, ErrUnauthorized) && indicatesMissingEndpointAccess(err)):
+	case errors.Is(err, whitebit.ErrForbidden) || (errors.Is(err, whitebit.ErrUnauthorized) && indicatesMissingEndpointAccess(err)):
 		return &ports.APIError{
 			Code:    ports.CodeForbidden,
 			Message: operation + " failed: API token lacks endpoint permission",
@@ -24,7 +25,7 @@ func buildAPIError(err error, endpoint, operation string) *ports.APIError {
 				endpoint, detail,
 			),
 		}
-	case errors.Is(err, ErrUnauthorized):
+	case errors.Is(err, whitebit.ErrUnauthorized):
 		return &ports.APIError{
 			Code:    ports.CodeUnauthorized,
 			Message: operation + " failed: credentials are invalid",
